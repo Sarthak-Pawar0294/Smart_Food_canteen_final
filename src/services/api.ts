@@ -1,24 +1,31 @@
 import { User, Order, CartItem, PaymentMethod, PaymentStatus, Receipt } from '../types';
 
-// FIX: Use relative path so it works on both Localhost (via Vite proxy) AND Production (Railway)
 const API_URL = '/api';
+
+// Helper to handle responses
+async function handleResponse(response: Response) {
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.indexOf("application/json") !== -1) {
+    return await response.json();
+  }
+  // If not JSON (e.g., 500 HTML error), throw text
+  const text = await response.text();
+  throw new Error(`Server Error (${response.status}): ${text.slice(0, 100)}`);
+}
 
 export const api = {
   async login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Login API Error:", error);
-      return { success: false, error: 'Network error. Please try again.' };
+      
+      return await handleResponse(response);
+    } catch (error: any) {
+      console.error("Login Error:", error);
+      return { success: false, error: error.message || 'Connection failed' };
     }
   },
 
@@ -32,38 +39,25 @@ export const api = {
     try {
       const response = await fetch(`${API_URL}/orders`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
-          items,
-          total,
+          userId, items, total,
           paymentMethod: paymentMethod || 'CASH',
           paymentStatus: paymentStatus || 'CASH'
         }),
       });
-
-      const data = await response.json();
-      return data;
+      return await handleResponse(response);
     } catch (error) {
-      return { success: false, error: 'Failed to create order. Please try again.' };
+      return { success: false, error: 'Failed to create order.' };
     }
   },
 
   async getOrders(userId: string): Promise<{ success: boolean; orders?: Order[]; error?: string }> {
     try {
-      const response = await fetch(`${API_URL}/orders/${userId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = await response.json();
-      return data;
+      const response = await fetch(`${API_URL}/orders/${userId}`);
+      return await handleResponse(response);
     } catch (error) {
-      return { success: false, error: 'Failed to fetch orders. Please try again.' };
+      return { success: false, error: 'Failed to fetch orders.' };
     }
   },
 
@@ -72,28 +66,22 @@ export const api = {
       const response = await fetch(`${API_URL}/healthz`);
       return await response.json();
     } catch (error) {
-      return { status: 'error', message: 'API is not reachable' };
+      return { status: 'error', message: 'API unreachable' };
     }
   },
 
   async getAllOrders(ownerEmail: string): Promise<{ success: boolean; orders?: Order[]; error?: string }> {
     try {
       const response = await fetch(`${API_URL}/orders/all`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-owner-email': ownerEmail,
-        },
+        headers: { 'x-owner-email': ownerEmail },
       });
-
-      const data = await response.json();
-      return data;
+      return await handleResponse(response);
     } catch (error) {
-      return { success: false, error: 'Failed to fetch orders. Please try again.' };
+      return { success: false, error: 'Failed to fetch orders.' };
     }
   },
 
-  async updateOrderStatus(orderId: string, status: 'ACCEPTED' | 'READY' | 'COMPLETED', ownerEmail: string): Promise<{ success: boolean; order?: Order; error?: string }> {
+  async updateOrderStatus(orderId: string, status: string, ownerEmail: string): Promise<{ success: boolean; order?: Order; error?: string }> {
     try {
       const response = await fetch(`${API_URL}/orders/${orderId}`, {
         method: 'PATCH',
@@ -103,11 +91,9 @@ export const api = {
         },
         body: JSON.stringify({ status }),
       });
-
-      const data = await response.json();
-      return data;
+      return await handleResponse(response);
     } catch (error) {
-      return { success: false, error: 'Failed to update order status. Please try again.' };
+      return { success: false, error: 'Failed to update order.' };
     }
   },
 
@@ -115,15 +101,10 @@ export const api = {
     try {
       const response = await fetch(`${API_URL}/orders/${orderId}/cancel`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
       });
-
-      const data = await response.json();
-      return data;
+      return await handleResponse(response);
     } catch (error) {
-      return { success: false, error: 'Network error. Please try again.' };
+      return { success: false, error: 'Failed to cancel order.' };
     }
   },
 };
