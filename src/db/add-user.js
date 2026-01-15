@@ -18,7 +18,7 @@ const users = [
     prn_hash: "1251090107"
   },
   {
-    email: "gaurav.125090175@vit.edu",
+    email: "gaurav.1251090175@vit.edu",
     full_name: "Gaurav Pawar",
     role: "STUDENT",
     prn_hash: "1251090175"
