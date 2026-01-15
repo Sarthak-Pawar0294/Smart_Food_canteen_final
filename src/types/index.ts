@@ -12,13 +12,13 @@ export interface User {
   email: string;
   full_name: string;
   role: 'STUDENT' | 'OWNER';
-  points?: number; // Added Loyalty Points
+  // Points removed
 }
 
 export interface Order {
   id: string;
   user_id: string;
-  items: CartItem[] | string; // Can be parsed array or JSON string
+  items: CartItem[] | string;
   total: number;
   status: 'pending' | 'ACCEPTED' | 'READY' | 'COMPLETED' | 'CANCELLED';
   payment_method: string;
