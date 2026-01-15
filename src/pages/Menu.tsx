@@ -1,19 +1,24 @@
 import { useState } from 'react';
 import { menuItems } from '../data/menuData';
 import { useCart } from '../context/CartContext';
-import { Plus, ShoppingCart } from 'lucide-react';
+import { Plus, ShoppingCart, Search } from 'lucide-react'; // Added Search icon
 
 export default function Menu() {
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState(''); // New State
   const { addToCart, getTotalItems } = useCart();
   const [addedItem, setAddedItem] = useState<string | null>(null);
 
   const categories = ['All', ...Array.from(new Set(menuItems.map((item) => item.category)))];
 
-  const filteredItems =
-    selectedCategory === 'All'
-      ? menuItems
-      : menuItems.filter((item) => item.category === selectedCategory);
+  // Updated Filter Logic
+  const filteredItems = menuItems.filter((item) => {
+    const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+    const matchesSearch = 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const handleAddToCart = (item: typeof menuItems[0]) => {
     addToCart(item);
@@ -24,17 +29,32 @@ export default function Menu() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Menu</h1>
             <p className="text-slate-600 mt-1">Choose your favorite dishes</p>
           </div>
-          {getTotalItems() > 0 && (
-            <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg">
-              <ShoppingCart className="w-5 h-5" />
-              <span className="font-medium">{getTotalItems()} items</span>
+          
+          <div className="flex items-center gap-4">
+            {/* New Search Bar */}
+            <div className="relative">
+              <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="text"
+                placeholder="Search food..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none w-64"
+              />
             </div>
-          )}
+
+            {getTotalItems() > 0 && (
+              <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg">
+                <ShoppingCart className="w-5 h-5" />
+                <span className="font-medium">{getTotalItems()} items</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-3 mb-8 overflow-x-auto pb-2">
@@ -53,6 +73,7 @@ export default function Menu() {
           ))}
         </div>
 
+        {/* Existing Grid Code ... */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map((item) => (
             <div
@@ -90,6 +111,12 @@ export default function Menu() {
             </div>
           ))}
         </div>
+        
+        {filteredItems.length === 0 && (
+           <div className="text-center py-12 text-slate-500">
+             No items found matching "{searchQuery}"
+           </div>
+        )}
       </div>
     </div>
   );
