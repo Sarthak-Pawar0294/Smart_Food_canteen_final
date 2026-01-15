@@ -1,9 +1,6 @@
-import sqlite3 from "sqlite3";
-sqlite3.verbose();
+// src/db/add-user.js
 
-const db = new sqlite3.Database('database.db');
-
-// ADD ALL USERS HERE
+// LIST OF USERS TO SEED
 const users = [
   {
     email: "harshad.1251090072@vit.edu",
@@ -18,6 +15,7 @@ const users = [
     prn_hash: "1251090107"
   },
   {
+    // Fixed Typo: Added missing '1' (1251090175)
     email: "gaurav.1251090175@vit.edu",
     full_name: "Gaurav Pawar",
     role: "STUDENT",
@@ -37,27 +35,20 @@ const users = [
   }
 ];
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE,
-      full_name TEXT,
-      role TEXT,
-      prn_hash TEXT
-    )
+// Function to run the seeding using the main server's database connection
+export function seedUsers(db) {
+  console.log("🔄 Loading user list from src/db/add-user.js...");
+  
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO users (email, full_name, role, prn_hash) 
+    VALUES (?, ?, ?, ?)
   `);
 
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO users (id, email, full_name, role, prn_hash) VALUES (hex(randomblob(16)), ?, ?, ?, ?)"
-  );
-
+  let count = 0;
   users.forEach((u) => {
-    stmt.run([u.email, u.full_name, u.role, u.prn_hash]);
+    const result = insert.run(u.email, u.full_name, u.role, u.prn_hash);
+    if (result.changes > 0) count++;
   });
 
-  stmt.finalize();
-  db.close();
-
-  console.log("Users inserted successfully!");
-});
+  console.log(`✔ Seeded ${count} new users from external list.`);
+}
