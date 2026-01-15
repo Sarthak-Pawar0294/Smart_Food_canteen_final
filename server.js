@@ -25,14 +25,15 @@ const PORT = process.env.PORT || 3001;
 // --------------------------------------
 const db = new Database("database.db");
 
-// 1. Create Tables
+// 1. Create Tables (Updated with 'points' column)
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE,
   full_name TEXT,
   role TEXT,
-  prn_hash TEXT
+  prn_hash TEXT,
+  points INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -50,19 +51,16 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 `);
 
-// 2. Auto-Seed Users (Fix for "User not found")
+// 2. Auto-Seed Users
 const userCount = db.prepare("SELECT count(*) as count FROM users").get();
 
 if (userCount.count === 0) {
   console.log("⚠ Database is empty. Seeding default users...");
-  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
+  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash, points) VALUES (?, ?, ?, ?, ?)");
   
-  // Owner Account
-  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen");
-  
-  // Student Account
-  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345");
-  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107");
+  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen", 0);
+  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345", 50); // Start with 50 points
+  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107", 100);
   
   console.log("✔ Users seeded!");
 }
@@ -82,21 +80,17 @@ app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Validate Email Format
     const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
-    // Allow old test format (5 digits) or new format (10 digits)
     const oldEmailRegex = /^[a-z]+\.[0-9]+@vit\.edu$/i;
 
     if (!oldEmailRegex.test(email) && email !== OWNER_EMAIL) {
       return res.status(400).json({ error: "Invalid email format" });
     }
 
-    // Extract PRN (password)
     let prnFromEmail = "";
     if (email === OWNER_EMAIL) {
       prnFromEmail = "canteen";
     } else {
-      // Get the number part between . and @
       const match = email.match(/\.([0-9]+)@/);
       prnFromEmail = match ? match[1] : "";
     }
@@ -105,8 +99,9 @@ app.post('/api/login', (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Include points in selection
     const user = db.prepare(
-      "SELECT id, email, full_name, role FROM users WHERE email = ? AND prn_hash = ?"
+      "SELECT id, email, full_name, role, points FROM users WHERE email = ? AND prn_hash = ?"
     ).get(email, password);
 
     if (!user) {
@@ -119,13 +114,13 @@ app.post('/api/login', (req, res) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role // Ensure role is passed
+        role: user.role,
+        points: user.points || 0
       }
     });
 
   } catch (err) {
     console.error("Login Error:", err);
-    // Return specific error if DB schema is wrong
     if (err.message.includes("no such column")) {
       return res.status(500).json({ error: "Database schema mismatch. Please reset database." });
     }
@@ -164,18 +159,25 @@ app.post('/api/orders', (req, res) => {
       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `);
     
-    stmt.run(
-      orderId,
-      userId,
-      JSON.stringify(items),
-      total,
-      paymentMethod || "CASH",
-      paymentStatus || "CASH",
-      paymentTime,
-      validTillTime,
-      JSON.stringify(paymentData),
-      createdAt
-    );
+    const transaction = db.transaction(() => {
+        stmt.run(
+            orderId,
+            userId,
+            JSON.stringify(items),
+            total,
+            paymentMethod || "CASH",
+            paymentStatus || "CASH",
+            paymentTime,
+            validTillTime,
+            JSON.stringify(paymentData),
+            createdAt
+        );
+
+        // REWARD POINTS: Add 10 points per order
+        db.prepare("UPDATE users SET points = points + 10 WHERE id = ?").run(userId);
+    });
+
+    transaction();
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
 
@@ -305,9 +307,6 @@ app.get('*', (req, res) => {
   }
 });
 
-// --------------------------------------
-// START SERVER
-// --------------------------------------
 app.listen(PORT, () => {
   console.log(`✔ Backend running on port ${PORT}`);
 });
