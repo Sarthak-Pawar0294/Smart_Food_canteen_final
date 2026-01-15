@@ -1,20 +1,20 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { menuItems } from '../data/menuData';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, Award } from 'lucide-react';
 
 export default function Menu() {
+  const { user } = useAuth();
   const { addToCart } = useCart();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  // Get unique categories from menu items
   const categories = useMemo(() => {
     const cats = ["All", ...new Set(menuItems.map(item => item.category))];
     return cats;
   }, []);
 
-  // Filter Logic
   const filteredItems = useMemo(() => {
     return menuItems.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -24,21 +24,29 @@ export default function Menu() {
   }, [searchTerm, selectedCategory]);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Search & Filter Header */}
-      <div className="bg-white shadow-sm border-b border-slate-200 sticky top-16 z-40">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors">
+      {/* Header with Search & Loyalty */}
+      <div className="bg-white dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-16 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
           
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input 
-              type="text" 
-              placeholder="Search for food (e.g. Samosa, Burger)..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent bg-slate-50"
-            />
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            {/* Search Bar */}
+            <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                <input 
+                type="text" 
+                placeholder="Search for food..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white"
+                />
+            </div>
+
+            {/* Loyalty Points Badge */}
+            <div className="w-full md:w-auto bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-4 py-3 md:py-2 rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap">
+                <Award className="w-5 h-5" />
+                <span className="font-bold">{user?.points || 0} Points</span>
+            </div>
           </div>
 
           {/* Categories */}
@@ -49,8 +57,8 @@ export default function Menu() {
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                   selectedCategory === cat
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-slate-900 text-white dark:bg-blue-600'
+                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 {cat}
@@ -62,21 +70,20 @@ export default function Menu() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
           {selectedCategory === "All" ? "Full Menu" : selectedCategory}
-          <span className="text-sm font-normal text-slate-500 ml-2">({filteredItems.length} items)</span>
+          <span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-2">({filteredItems.length} items)</span>
         </h1>
         
         {filteredItems.length === 0 ? (
           <div className="text-center py-20">
-            <Filter className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-900">No items found</h3>
-            <p className="text-slate-500">Try changing your search or category.</p>
+            <Filter className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 dark:text-white">No items found</h3>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredItems.map((item) => (
-              <div key={item.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-slate-100">
+              <div key={item.id} className="bg-white dark:bg-slate-900 rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-slate-100 dark:border-slate-800">
                 <div className="h-48 overflow-hidden relative">
                   <img
                     src={item.image}
@@ -89,13 +96,13 @@ export default function Menu() {
                 </div>
                 <div className="p-4">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-lg font-bold text-slate-900">{item.name}</h3>
-                    <span className="text-lg font-bold text-slate-900">₹{item.price}</span>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">{item.name}</h3>
+                    <span className="text-lg font-bold text-slate-900 dark:text-blue-400">₹{item.price}</span>
                   </div>
-                  <p className="text-slate-600 text-sm mb-4 line-clamp-2">{item.description}</p>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-4 line-clamp-2">{item.description}</p>
                   <button
                     onClick={() => addToCart(item)}
-                    className="w-full bg-slate-900 text-white py-2.5 rounded-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 font-medium active:scale-95"
+                    className="w-full bg-slate-900 dark:bg-blue-600 text-white py-2.5 rounded-lg hover:bg-slate-800 dark:hover:bg-blue-700 transition flex items-center justify-center gap-2 font-medium active:scale-95"
                   >
                     <Plus className="w-5 h-5" />
                     Add to Cart
