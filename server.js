@@ -249,26 +249,32 @@ app.get('*', (req, res) => {
   }
 });
 
-// CANCEL ORDER (Student)
+// --------------------------------------
+// CANCEL ORDER (STUDENT)
+// --------------------------------------
 app.patch('/api/orders/:orderId/cancel', (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // Check current status first
-    const currentOrder = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
+    // 1. Check current status
+    const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
 
-    if (!currentOrder) {
+    if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    if (currentOrder.status !== 'pending') {
-      return res.status(400).json({ error: "Cannot cancel order that is already accepted or completed" });
+    // 2. Only allow cancellation if status is 'pending'
+    if (order.status !== 'pending') {
+      return res.status(400).json({ 
+        error: "Cannot cancel order. It has already been processed by the canteen." 
+      });
     }
 
-    // Update status to CANCELLED
+    // 3. Update status to CANCELLED
     db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
-    
-    return res.json({ success: true });
+
+    return res.json({ success: true, message: "Order cancelled successfully" });
+
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to cancel order" });
