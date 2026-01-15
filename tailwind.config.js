@@ -4,7 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class', // Enable manual dark mode
+  darkMode: 'class', // Enables manual dark mode toggling
   theme: {
     extend: {},
   },
