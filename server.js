@@ -25,15 +25,14 @@ const PORT = process.env.PORT || 3001;
 // --------------------------------------
 const db = new Database("database.db");
 
-// 1. Create Tables (Updated with 'points' column)
+// 1. Create Tables (Removed points column)
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE,
   full_name TEXT,
   role TEXT,
-  prn_hash TEXT,
-  points INTEGER DEFAULT 0
+  prn_hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -51,16 +50,16 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 `);
 
-// 2. Auto-Seed Users
+// 2. Auto-Seed Users (Removed points from insert)
 const userCount = db.prepare("SELECT count(*) as count FROM users").get();
 
 if (userCount.count === 0) {
   console.log("⚠ Database is empty. Seeding default users...");
-  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash, points) VALUES (?, ?, ?, ?, ?)");
+  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
   
-  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen", 0);
-  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345", 50); // Start with 50 points
-  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107", 100);
+  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen");
+  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345");
+  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107");
   
   console.log("✔ Users seeded!");
 }
@@ -99,9 +98,9 @@ app.post('/api/login', (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Include points in selection
+    // Removed points from select
     const user = db.prepare(
-      "SELECT id, email, full_name, role, points FROM users WHERE email = ? AND prn_hash = ?"
+      "SELECT id, email, full_name, role FROM users WHERE email = ? AND prn_hash = ?"
     ).get(email, password);
 
     if (!user) {
@@ -114,8 +113,7 @@ app.post('/api/login', (req, res) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role,
-        points: user.points || 0
+        role: user.role
       }
     });
 
@@ -159,25 +157,19 @@ app.post('/api/orders', (req, res) => {
       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `);
     
-    const transaction = db.transaction(() => {
-        stmt.run(
-            orderId,
-            userId,
-            JSON.stringify(items),
-            total,
-            paymentMethod || "CASH",
-            paymentStatus || "CASH",
-            paymentTime,
-            validTillTime,
-            JSON.stringify(paymentData),
-            createdAt
-        );
-
-        // REWARD POINTS: Add 10 points per order
-        db.prepare("UPDATE users SET points = points + 10 WHERE id = ?").run(userId);
-    });
-
-    transaction();
+    // Removed Transaction and Points Update logic
+    stmt.run(
+        orderId,
+        userId,
+        JSON.stringify(items),
+        total,
+        paymentMethod || "CASH",
+        paymentStatus || "CASH",
+        paymentTime,
+        validTillTime,
+        JSON.stringify(paymentData),
+        createdAt
+    );
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
 
@@ -209,7 +201,7 @@ app.get('/api/orders/all', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
     if (ownerEmail !== OWNER_EMAIL) {
-      return res.status(403).json({ error: "Unauthorized" });
+      return res.status(43).json({ error: "Unauthorized" });
     }
 
     const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
