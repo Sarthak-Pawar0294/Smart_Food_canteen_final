@@ -10,6 +10,7 @@ import {
   AlertCircle,
   CreditCard,
   Banknote,
+  Copy
 } from "lucide-react";
 
 export default function OwnerDashboard() {
@@ -19,7 +20,6 @@ export default function OwnerDashboard() {
   const [error, setError] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Fix: Safe JSON parser to prevent dashboard crashes
   const safeJSON = (data: any) => {
     try {
       return typeof data === "string" ? JSON.parse(data) : data;
@@ -68,6 +68,12 @@ export default function OwnerDashboard() {
       setError(result.error || "Failed to update order");
     }
     setUpdatingId(null);
+  };
+
+  // Helper to copy Order ID
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert("Order ID copied: " + text);
   };
 
   const getStatusColor = (status: string) => {
@@ -145,36 +151,51 @@ export default function OwnerDashboard() {
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id} className="border-b hover:bg-slate-50">
-                    <td className="px-4 py-4">{order.id}</td>
                     <td className="px-4 py-4">
-                      <div>{order.payment_data?.studentName}</div>
+                      {/* UUID Display Improvement */}
+                      <div 
+                        className="flex items-center gap-1 group cursor-pointer" 
+                        title={order.id}
+                        onClick={() => copyToClipboard(order.id)}
+                      >
+                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                          {order.id.slice(0, 8)}...
+                        </span>
+                        <Copy className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="font-medium text-slate-900">{order.payment_data?.studentName}</div>
                       <div className="text-xs text-slate-500">{order.payment_data?.studentEmail}</div>
                     </td>
                     <td className="px-4 py-4 text-sm">
                       {Array.isArray(order.items) && order.items.map((it: any, idx: number) => (
-                        <div key={idx}>{it.name} x {it.quantity}</div>
+                        <div key={idx} className="whitespace-nowrap">
+                          {it.name} <span className="text-slate-500">x{it.quantity}</span>
+                        </div>
                       ))}
                     </td>
                     <td className="px-4 py-4 font-semibold">
                       ₹{parseFloat(String(order.total)).toFixed(2)}
-                      <div className="text-xs font-normal text-slate-500 mt-1">
+                      <div className="text-xs font-normal text-slate-500 mt-1 flex items-center gap-1">
+                        {order.payment_method === "CASH" ? <Banknote className="w-3 h-3"/> : <CreditCard className="w-3 h-3"/>}
                         {getPaymentMethodLabel(order.payment_method)}
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit ${getStatusColor(order.status)}`}>
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit text-sm ${getStatusColor(order.status)}`}>
                         {getStatusIcon(order.status)}
-                        {order.status}
+                        <span className="capitalize">{order.status}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4">{formatLocalTime(order.created_at)}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{formatLocalTime(order.created_at)}</td>
                     <td className="px-4 py-4">
                       <div className="flex gap-2">
                         {order.status === "pending" && (
                           <button
                             onClick={() => handleStatusUpdate(order.id, "ACCEPTED")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm font-medium"
+                            className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm font-medium transition"
                           >
                             Accept
                           </button>
@@ -183,7 +204,7 @@ export default function OwnerDashboard() {
                           <button
                             onClick={() => handleStatusUpdate(order.id, "READY")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium"
+                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium transition"
                           >
                             Ready
                           </button>
@@ -192,10 +213,13 @@ export default function OwnerDashboard() {
                           <button
                             onClick={() => handleStatusUpdate(order.id, "COMPLETED")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium"
+                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium transition"
                           >
                             Complete
                           </button>
+                        )}
+                        {order.status === "COMPLETED" && (
+                          <span className="text-slate-400 text-sm italic">Done</span>
                         )}
                       </div>
                     </td>
