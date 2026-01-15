@@ -17,12 +17,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const OWNER_EMAIL = "canteen@vit.edu";
+const PORT = process.env.PORT || 3001; // Fix: Support deployment ports
 
 // --------------------------------------
 // SQLITE SETUP
 // --------------------------------------
 const db = new Database("database.db");
 
+// Fix: Removed 'DEFAULT' for created_at to ensure consistent JS-generated ISO strings
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +45,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_time TEXT,
   valid_till_time TEXT,
   payment_data TEXT,
-  created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  created_at TEXT
 );
 `);
 
@@ -52,10 +54,7 @@ CREATE TABLE IF NOT EXISTS orders (
 // --------------------------------------
 const distPath = join(__dirname, "dist");
 if (fs.existsSync(distPath)) {
-  console.log("✔ Serving frontend from DIST folder");
   app.use(express.static(distPath));
-} else {
-  console.log("⚠ No dist folder found — using Vite dev server instead");
 }
 
 // --------------------------------------
@@ -64,21 +63,13 @@ if (fs.existsSync(distPath)) {
 app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
-
     const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
 
     if (!emailRegex.test(email) && email !== OWNER_EMAIL) {
       return res.status(400).json({ error: "Invalid email format" });
     }
 
-    const prnFromEmail =
-      email === OWNER_EMAIL
-        ? "canteen"
-        : email.match(/\.(\d{10})@/)?.[1];
-
-    if (!prnFromEmail) {
-      return res.status(400).json({ error: "Invalid email format" });
-    }
+    const prnFromEmail = email === OWNER_EMAIL ? "canteen" : email.match(/\.(\d{10})@/)?.[1];
 
     if (password !== prnFromEmail) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -109,7 +100,7 @@ app.post('/api/login', (req, res) => {
 });
 
 // --------------------------------------
-// CREATE ORDER  (PATCH FIXED HERE)
+// CREATE ORDER
 // --------------------------------------
 app.post('/api/orders', (req, res) => {
   try {
@@ -119,24 +110,24 @@ app.post('/api/orders', (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const user = db.prepare(
-      "SELECT email, full_name FROM users WHERE id = ?"
-    ).get(userId);
+    const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
 
-    const paymentTime = new Date().toISOString();
-    const validTillTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    // Fix: Generate all dates here as ISO strings for consistency
+    const now = new Date();
+    const paymentTime = now.toISOString();
+    const createdAt = now.toISOString();
+    const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
     const paymentData = {
       studentName: user?.full_name || "Student",
       studentEmail: user?.email || ""
     };
 
-    // ★★★★★ PATCH APPLIED HERE ★★★★★
     const result = db.prepare(`
       INSERT INTO orders 
       (user_id, items, total, status, payment_method, payment_status,
        payment_time, valid_till_time, payment_data, created_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       JSON.stringify(items),
@@ -145,11 +136,11 @@ app.post('/api/orders', (req, res) => {
       paymentStatus || "CASH",
       paymentTime,
       validTillTime,
-      JSON.stringify(paymentData)
+      JSON.stringify(paymentData),
+      createdAt // Explicitly storing created_at
     );
 
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?")
-      .get(result.lastInsertRowid);
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(result.lastInsertRowid);
 
     const receipt = {
       studentName: paymentData.studentName,
@@ -178,16 +169,11 @@ app.post('/api/orders', (req, res) => {
 app.get('/api/orders/all', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
-
     if (ownerEmail !== OWNER_EMAIL) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const orders = db.prepare(`
-      SELECT * FROM orders
-      ORDER BY id DESC
-    `).all();
-
+    const orders = db.prepare("SELECT * FROM orders ORDER BY id DESC").all();
     return res.json({ success: true, orders });
 
   } catch (err) {
@@ -201,14 +187,8 @@ app.get('/api/orders/all', (req, res) => {
 // --------------------------------------
 app.get('/api/orders/:userId', (req, res) => {
   try {
-    const orders = db.prepare(`
-      SELECT * FROM orders
-      WHERE user_id = ?
-      ORDER BY id DESC
-    `).all(req.params.userId);
-
+    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC").all(req.params.userId);
     return res.json({ success: true, orders });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to fetch orders" });
@@ -221,22 +201,17 @@ app.get('/api/orders/:userId', (req, res) => {
 app.patch('/api/orders/:orderId', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
-
     if (ownerEmail !== OWNER_EMAIL) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
     const { status } = req.body;
-
     if (!["ACCEPTED", "READY", "COMPLETED"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    db.prepare("UPDATE orders SET status = ? WHERE id = ?")
-      .run(status, req.params.orderId);
-
-    const updated = db.prepare("SELECT * FROM orders WHERE id = ?")
-      .get(req.params.orderId);
+    db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.orderId);
+    const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.orderId);
 
     return res.json({ success: true, order: updated });
 
@@ -257,12 +232,16 @@ app.get('/api/healthz', (req, res) => {
 // SPA FALLBACK
 // --------------------------------------
 app.get('*', (req, res) => {
-  res.sendFile(join(__dirname, "dist", "index.html"));
+  if (fs.existsSync(distPath)) {
+    res.sendFile(join(__dirname, "dist", "index.html"));
+  } else {
+    res.status(404).send("Frontend not built. Run 'npm run build'");
+  }
 });
 
 // --------------------------------------
 // START SERVER
 // --------------------------------------
-app.listen(3001, () => {
-  console.log("✔ SQLite backend running on port 3001");
+app.listen(PORT, () => {
+  console.log(`✔ Backend running on port ${PORT}`);
 });
