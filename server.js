@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
-import { randomUUID } from 'crypto'; // New: Import UUID generator
+import { randomUUID } from 'crypto';
 
 // --------------------------------------
 // SETUP
@@ -25,7 +25,6 @@ const PORT = process.env.PORT || 3001;
 // --------------------------------------
 const db = new Database("database.db");
 
-// Fix: Changed 'id' to TEXT for UUIDs
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,26 +100,22 @@ app.post('/api/login', (req, res) => {
 });
 
 // --------------------------------------
-// CREATE ORDER (Updated for UUID)
+// CREATE ORDER
 // --------------------------------------
 app.post('/api/orders', (req, res) => {
   try {
     const { userId, items, total, paymentMethod, paymentStatus } = req.body;
 
-    // Improvement: Basic validation to prevent empty orders
     if (!userId || !items || items.length === 0 || !total) {
       return res.status(400).json({ error: "Invalid order data" });
     }
 
     const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
 
-    // Generate Dates
     const now = new Date();
     const paymentTime = now.toISOString();
     const createdAt = now.toISOString();
     const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-
-    // New: Generate UUID
     const orderId = randomUUID();
 
     const paymentData = {
@@ -128,7 +123,6 @@ app.post('/api/orders', (req, res) => {
       studentEmail: user?.email || ""
     };
 
-    // Insert with UUID
     const stmt = db.prepare(`
       INSERT INTO orders 
       (id, user_id, items, total, status, payment_method, payment_status,
@@ -137,7 +131,7 @@ app.post('/api/orders', (req, res) => {
     `);
     
     stmt.run(
-      orderId, // Use the generated UUID
+      orderId,
       userId,
       JSON.stringify(items),
       total,
@@ -182,7 +176,6 @@ app.get('/api/orders/all', (req, res) => {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    // Sort by created_at desc (newest first)
     const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
     return res.json({ success: true, orders });
 
@@ -232,24 +225,6 @@ app.patch('/api/orders/:orderId', (req, res) => {
 });
 
 // --------------------------------------
-// HEALTH CHECK
-// --------------------------------------
-app.get('/api/healthz', (req, res) => {
-  return res.json({ status: "ok", message: "API running" });
-});
-
-// --------------------------------------
-// SPA FALLBACK
-// --------------------------------------
-app.get('*', (req, res) => {
-  if (fs.existsSync(distPath)) {
-    res.sendFile(join(__dirname, "dist", "index.html"));
-  } else {
-    res.status(404).send("Frontend not built. Run 'npm run build'");
-  }
-});
-
-// --------------------------------------
 // CANCEL ORDER (STUDENT)
 // --------------------------------------
 app.patch('/api/orders/:orderId/cancel', (req, res) => {
@@ -281,7 +256,24 @@ app.patch('/api/orders/:orderId/cancel', (req, res) => {
   }
 });
 
-// ... app.listen
+// --------------------------------------
+// HEALTH CHECK
+// --------------------------------------
+app.get('/api/healthz', (req, res) => {
+  return res.json({ status: "ok", message: "API running" });
+});
+
+// --------------------------------------
+// SPA FALLBACK
+// --------------------------------------
+app.get('*', (req, res) => {
+  if (fs.existsSync(distPath)) {
+    res.sendFile(join(__dirname, "dist", "index.html"));
+  } else {
+    res.status(404).send("Frontend not built. Run 'npm run build'");
+  }
+});
+
 // --------------------------------------
 // START SERVER
 // --------------------------------------
