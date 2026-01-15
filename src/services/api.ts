@@ -1,6 +1,7 @@
 import { User, Order, CartItem, PaymentMethod, PaymentStatus, Receipt } from '../types';
 
-const API_URL = 'http://localhost:3001/api';
+// FIX: Use relative path so it works on both Localhost (via Vite proxy) AND Production (Railway)
+const API_URL = '/api';
 
 export const api = {
   async login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -16,6 +17,7 @@ export const api = {
       const data = await response.json();
       return data;
     } catch (error) {
+      console.error("Login API Error:", error);
       return { success: false, error: 'Network error. Please try again.' };
     }
   },
