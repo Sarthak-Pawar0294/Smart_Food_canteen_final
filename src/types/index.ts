@@ -1,39 +1,36 @@
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+  category: string;
+}
+
 export interface User {
   id: string;
   email: string;
-  role: 'OWNER' | 'STUDENT';
-  full_name?: string | null;
+  full_name: string;
+  role: 'STUDENT' | 'OWNER';
+  points?: number; // Added Loyalty Points
 }
-
-export interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  category: string;
-  image: string;
-}
-
-export interface CartItem extends MenuItem {
-  quantity: number;
-}
-
-export type PaymentMethod = 'PHONEPE' | 'GPAY' | 'UPI' | 'CASH';
-export type PaymentStatus = 'PAID' | 'CASH' | 'PENDING';
 
 export interface Order {
   id: string;
   user_id: string;
-  items: CartItem[];
+  items: CartItem[] | string; // Can be parsed array or JSON string
   total: number;
-  status: string;
-  payment_method?: PaymentMethod;
-  payment_status?: PaymentStatus;
+  status: 'pending' | 'ACCEPTED' | 'READY' | 'COMPLETED' | 'CANCELLED';
+  payment_method: string;
+  payment_status: string;
+  payment_time: string;
+  valid_till_time: string;
+  payment_data: any;
   created_at: string;
-  payment_time?: string;
-  valid_till_time?: string;
-  payment_data?: any;
 }
+
+export type PaymentMethod = 'UPI' | 'CASH' | 'GPAY' | 'PHONEPE';
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
 
 export interface Receipt {
   studentName: string;
@@ -42,9 +39,8 @@ export interface Receipt {
   items: CartItem[];
   totalAmount: number;
   paymentMethod: PaymentMethod;
-  paymentStatus: 'SUCCESS' | 'PENDING';
+  paymentStatus: PaymentStatus;
   paymentTime: string;
   validTillTime: string;
-  isExpired?: boolean;
-  orderStatus?: string;
+  orderStatus: string;
 }
