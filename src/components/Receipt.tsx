@@ -1,17 +1,16 @@
 import { Receipt as ReceiptType, CartItem } from '../types';
 import { CheckCircle, Clock, CreditCard, Smartphone, Wallet, Banknote, ArrowLeft } from 'lucide-react';
 import vitLogo from '../assets/vit-logo.png';
-import { useNavigate } from "react-router-dom";
 
 interface ReceiptProps {
   receipt: ReceiptType;
-  onClose: () => void; // unused now but kept for type safety
+  onClose: () => void;
 }
 
-export default function Receipt({ receipt }: ReceiptProps) {
-  const navigate = useNavigate();
-
+export default function Receipt({ receipt, onClose }: ReceiptProps) {
+  
   const formatDateTime = (isoString: string) => {
+    if (!isoString) return 'N/A';
     const date = new Date(isoString);
     return date.toLocaleString('en-IN', {
       year: 'numeric',
@@ -37,47 +36,31 @@ export default function Receipt({ receipt }: ReceiptProps) {
 
   const getPaymentMethodLabel = (method: string) => {
     switch (method) {
-      case 'PHONEPE':
-        return 'PhonePe';
-      case 'GPAY':
-        return 'Google Pay';
-      case 'UPI':
-        return 'UPI';
-      case 'CASH':
-        return 'Cash at Canteen';
-      default:
-        return method || 'N/A';
+      case 'PHONEPE': return 'PhonePe';
+      case 'GPAY': return 'Google Pay';
+      case 'UPI': return 'UPI';
+      case 'CASH': return 'Cash at Canteen';
+      default: return method || 'N/A';
     }
   };
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
-      case 'PHONEPE':
-        return <Smartphone className="w-5 h-5" />;
-      case 'GPAY':
-        return <Wallet className="w-5 h-5" />;
-      case 'UPI':
-        return <CreditCard className="w-5 h-5" />;
-      case 'CASH':
-        return <Banknote className="w-5 h-5" />;
-      default:
-        return <CreditCard className="w-5 h-5" />;
+      case 'PHONEPE': return <Smartphone className="w-5 h-5" />;
+      case 'GPAY': return <Wallet className="w-5 h-5" />;
+      case 'UPI': return <CreditCard className="w-5 h-5" />;
+      case 'CASH': return <Banknote className="w-5 h-5" />;
+      default: return <CreditCard className="w-5 h-5" />;
     }
-  };
-
-  // 🔥 FIXED: safe close function
-  const closeAndReturnToMenu = () => {
-    navigate("/menu");
-    window.location.reload(); // ensures no blank screen and resets app state
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
 
-        {/* 🔥 FIXED BACK BUTTON */}
+        {/* Back Button calls onClose */}
         <button
-          onClick={closeAndReturnToMenu}
+          onClick={onClose}
           className="absolute top-4 left-4 z-20 flex items-center gap-1 text-slate-600 hover:text-slate-900 transition font-medium"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -207,9 +190,9 @@ export default function Receipt({ receipt }: ReceiptProps) {
             )}
           </div>
 
-          {/* 🔥 FIXED DONE BUTTON */}
+          {/* Done Button calls onClose */}
           <button
-            onClick={closeAndReturnToMenu}
+            onClick={onClose}
             className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition"
           >
             Done
