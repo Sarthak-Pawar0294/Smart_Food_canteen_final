@@ -249,6 +249,33 @@ app.get('*', (req, res) => {
   }
 });
 
+// CANCEL ORDER (Student)
+app.patch('/api/orders/:orderId/cancel', (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // Check current status first
+    const currentOrder = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
+
+    if (!currentOrder) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (currentOrder.status !== 'pending') {
+      return res.status(400).json({ error: "Cannot cancel order that is already accepted or completed" });
+    }
+
+    // Update status to CANCELLED
+    db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
+    
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to cancel order" });
+  }
+});
+
+// ... app.listen
 // --------------------------------------
 // START SERVER
 // --------------------------------------
