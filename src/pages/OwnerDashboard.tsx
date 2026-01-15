@@ -13,7 +13,6 @@ import {
   Copy,
   XCircle,
   TrendingUp,
-  ShoppingBag,
   Calendar
 } from "lucide-react";
 
@@ -189,4 +188,122 @@ export default function OwnerDashboard() {
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-500 font-medium
+              <h3 className="text-slate-500 font-medium">Today's Orders</h3>
+              <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                <Calendar className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">{stats.todayCount}</p>
+            <p className="text-sm text-slate-400 mt-1">{new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
+
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-100 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left">Order ID</th>
+                  <th className="px-4 py-3 text-left">Student</th>
+                  <th className="px-4 py-3 text-left">Items</th>
+                  <th className="px-4 py-3 text-left">Total</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Time</th>
+                  <th className="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id} className="border-b hover:bg-slate-50">
+                    <td className="px-4 py-4">
+                      <div 
+                        className="flex items-center gap-1 group cursor-pointer" 
+                        title={order.id}
+                        onClick={() => copyToClipboard(order.id)}
+                      >
+                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                          {order.id.slice(0, 8)}...
+                        </span>
+                        <Copy className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="font-medium text-slate-900">{order.payment_data?.studentName}</div>
+                      <div className="text-xs text-slate-500">{order.payment_data?.studentEmail}</div>
+                    </td>
+                    <td className="px-4 py-4 text-sm">
+                      {Array.isArray(order.items) && order.items.map((it: any, idx: number) => (
+                        <div key={idx} className="whitespace-nowrap">
+                          {it.name} <span className="text-slate-500">x{it.quantity}</span>
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-4 py-4 font-semibold">
+                      ₹{parseFloat(String(order.total)).toFixed(2)}
+                      <div className="text-xs font-normal text-slate-500 mt-1 flex items-center gap-1">
+                        {order.payment_method === "CASH" ? <Banknote className="w-3 h-3"/> : <CreditCard className="w-3 h-3"/>}
+                        {getPaymentMethodLabel(order.payment_method)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit text-sm ${getStatusColor(order.status)}`}>
+                        {getStatusIcon(order.status)}
+                        <span className="capitalize">{order.status}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{formatLocalTime(order.created_at)}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex gap-2">
+                        {order.status === "pending" && (
+                          <button
+                            onClick={() => handleStatusUpdate(order.id, "ACCEPTED")}
+                            disabled={updatingId === order.id}
+                            className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm font-medium transition"
+                          >
+                            Accept
+                          </button>
+                        )}
+                        {order.status === "ACCEPTED" && (
+                          <button
+                            onClick={() => handleStatusUpdate(order.id, "READY")}
+                            disabled={updatingId === order.id}
+                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium transition"
+                          >
+                            Ready
+                          </button>
+                        )}
+                        {order.status === "READY" && (
+                          <button
+                            onClick={() => handleStatusUpdate(order.id, "COMPLETED")}
+                            disabled={updatingId === order.id}
+                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium transition"
+                          >
+                            Complete
+                          </button>
+                        )}
+                        {order.status === "COMPLETED" && (
+                          <span className="text-slate-400 text-sm italic">Done</span>
+                        )}
+                        {order.status === "CANCELLED" && (
+                          <span className="text-red-500 text-sm font-medium flex items-center gap-1">
+                            <XCircle className="w-4 h-4" /> Cancelled
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
