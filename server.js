@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
-import { randomUUID } from 'crypto';
 
 // --------------------------------------
 // SETUP
@@ -25,7 +24,7 @@ const PORT = process.env.PORT || 3001;
 // --------------------------------------
 const db = new Database("database.db");
 
-// 1. Create Tables (Removed points column)
+// 1. Create Tables
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  id TEXT PRIMARY KEY, 
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER,
   items TEXT,
   total REAL,
@@ -46,23 +45,54 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_time TEXT,
   valid_till_time TEXT,
   payment_data TEXT,
-  created_at TEXT
+  created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 `);
 
-// 2. Auto-Seed Users (Removed points from insert)
-const userCount = db.prepare("SELECT count(*) as count FROM users").get();
+// --------------------------------------
+// AUTO-SEED USERS (Fix for "User Not Found")
+// --------------------------------------
+const usersToSeed = [
+  {
+    email: "canteen@vit.edu",
+    full_name: "Canteen Admin",
+    role: "OWNER",
+    prn_hash: "canteen"
+  },
+  {
+    email: "sarthak.1251090107@vit.edu",
+    full_name: "Sarthak Pawar",
+    role: "STUDENT",
+    prn_hash: "1251090107"
+  },
+  {
+    email: "harshad.1251090072@vit.edu",
+    full_name: "Harshad Pawar",
+    role: "STUDENT",
+    prn_hash: "1251090072"
+  },
+  {
+    // Fixed Typo: Changed 125090175 -> 1251090175 to match PRN logic
+    email: "gaurav.1251090175@vit.edu", 
+    full_name: "Gaurav Pawar",
+    role: "STUDENT",
+    prn_hash: "1251090175"
+  },
+  {
+    email: "sanyam.1251090397@vit.edu",
+    full_name: "Sanyam Pawar",
+    role: "STUDENT",
+    prn_hash: "1251090397"
+  }
+];
 
-if (userCount.count === 0) {
-  console.log("⚠ Database is empty. Seeding default users...");
-  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
-  
-  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen");
-  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345");
-  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107");
-  
-  console.log("✔ Users seeded!");
-}
+const insertStmt = db.prepare("INSERT OR IGNORE INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
+
+console.log("🔄 Checking and seeding users...");
+usersToSeed.forEach(user => {
+  insertStmt.run(user.email, user.full_name, user.role, user.prn_hash);
+});
+console.log("✔ Users seeded successfully!");
 
 // --------------------------------------
 // SERVE FRONTEND
@@ -78,27 +108,27 @@ if (fs.existsSync(distPath)) {
 app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
-    const oldEmailRegex = /^[a-z]+\.[0-9]+@vit\.edu$/i;
 
-    if (!oldEmailRegex.test(email) && email !== OWNER_EMAIL) {
-      return res.status(400).json({ error: "Invalid email format" });
+    // Regex requires exactly 10 digits for PRN
+    const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
+
+    if (!emailRegex.test(email) && email !== OWNER_EMAIL) {
+      return res.status(400).json({ error: "Invalid email format (Must contain 10-digit PRN)" });
     }
 
-    let prnFromEmail = "";
-    if (email === OWNER_EMAIL) {
-      prnFromEmail = "canteen";
-    } else {
-      const match = email.match(/\.([0-9]+)@/);
-      prnFromEmail = match ? match[1] : "";
+    const prnFromEmail =
+      email === OWNER_EMAIL
+        ? "canteen"
+        : email.match(/\.(\d{10})@/)?.[1];
+
+    if (!prnFromEmail) {
+      return res.status(400).json({ error: "Could not extract PRN from email" });
     }
 
     if (password !== prnFromEmail) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Removed points from select
     const user = db.prepare(
       "SELECT id, email, full_name, role FROM users WHERE email = ? AND prn_hash = ?"
     ).get(email, password);
@@ -113,15 +143,12 @@ app.post('/api/login', (req, res) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role
+        role: email === OWNER_EMAIL ? "OWNER" : "STUDENT"
       }
     });
 
   } catch (err) {
-    console.error("Login Error:", err);
-    if (err.message.includes("no such column")) {
-      return res.status(500).json({ error: "Database schema mismatch. Please reset database." });
-    }
+    console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
 });
@@ -133,45 +160,40 @@ app.post('/api/orders', (req, res) => {
   try {
     const { userId, items, total, paymentMethod, paymentStatus } = req.body;
 
-    if (!userId || !items || items.length === 0 || !total) {
-      return res.status(400).json({ error: "Invalid order data" });
+    if (!userId || !items || !total) {
+      return res.status(400).json({ error: "Missing fields" });
     }
 
-    const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
+    const user = db.prepare(
+      "SELECT email, full_name FROM users WHERE id = ?"
+    ).get(userId);
 
-    const now = new Date();
-    const paymentTime = now.toISOString();
-    const createdAt = now.toISOString();
-    const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-    const orderId = randomUUID();
+    const paymentTime = new Date().toISOString();
+    const validTillTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
 
     const paymentData = {
       studentName: user?.full_name || "Student",
       studentEmail: user?.email || ""
     };
 
-    const stmt = db.prepare(`
+    const result = db.prepare(`
       INSERT INTO orders 
-      (id, user_id, items, total, status, payment_method, payment_status,
+      (user_id, items, total, status, payment_method, payment_status,
        payment_time, valid_till_time, payment_data, created_at)
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-    `);
-    
-    // Removed Transaction and Points Update logic
-    stmt.run(
-        orderId,
-        userId,
-        JSON.stringify(items),
-        total,
-        paymentMethod || "CASH",
-        paymentStatus || "CASH",
-        paymentTime,
-        validTillTime,
-        JSON.stringify(paymentData),
-        createdAt
+      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+    `).run(
+      userId,
+      JSON.stringify(items),
+      total,
+      paymentMethod || "CASH",
+      paymentStatus || "CASH",
+      paymentTime,
+      validTillTime,
+      JSON.stringify(paymentData)
     );
 
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?")
+      .get(result.lastInsertRowid);
 
     const receipt = {
       studentName: paymentData.studentName,
@@ -201,12 +223,10 @@ app.get('/api/orders/all', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
     if (ownerEmail !== OWNER_EMAIL) {
-      return res.status(43).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Unauthorized" });
     }
-
-    const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
+    const orders = db.prepare(`SELECT * FROM orders ORDER BY id DESC`).all();
     return res.json({ success: true, orders });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to fetch orders" });
@@ -218,7 +238,7 @@ app.get('/api/orders/all', (req, res) => {
 // --------------------------------------
 app.get('/api/orders/:userId', (req, res) => {
   try {
-    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
+    const orders = db.prepare(`SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC`).all(req.params.userId);
     return res.json({ success: true, orders });
   } catch (err) {
     console.error(err);
@@ -235,49 +255,16 @@ app.patch('/api/orders/:orderId', (req, res) => {
     if (ownerEmail !== OWNER_EMAIL) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-
     const { status } = req.body;
     if (!["ACCEPTED", "READY", "COMPLETED"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
-
     db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.orderId);
     const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.orderId);
-
     return res.json({ success: true, order: updated });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to update order" });
-  }
-});
-
-// --------------------------------------
-// CANCEL ORDER (STUDENT)
-// --------------------------------------
-app.patch('/api/orders/:orderId/cancel', (req, res) => {
-  try {
-    const { orderId } = req.params;
-
-    const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
-
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    if (order.status !== 'pending') {
-      return res.status(400).json({ 
-        error: "Cannot cancel order. It has already been processed." 
-      });
-    }
-
-    db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
-
-    return res.json({ success: true, message: "Order cancelled successfully" });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to cancel order" });
   }
 });
 
@@ -299,6 +286,9 @@ app.get('*', (req, res) => {
   }
 });
 
+// --------------------------------------
+// START SERVER
+// --------------------------------------
 app.listen(PORT, () => {
   console.log(`✔ Backend running on port ${PORT}`);
 });
