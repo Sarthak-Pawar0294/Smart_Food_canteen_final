@@ -25,6 +25,8 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<ReceiptType | null>(null);
+  
+  // Snapshot of items for the receipt (in case cart changes)
   const [orderItems, setOrderItems] = useState<CartItem[]>([]);
 
   const subtotal = getTotalPrice();
@@ -54,8 +56,12 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
 
     setProcessing(true);
     setError('');
-    setOrderItems([...cart]);
+    
+    // Save items for receipt display
+    const currentItems = [...cart];
+    setOrderItems(currentItems);
 
+    // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const paymentStatus = selectedMethod === 'CASH' ? 'CASH' : 'PAID';
@@ -69,10 +75,10 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
     );
 
     if (result.success && result.receipt) {
-      clearCart();
+      // FIX: Do NOT clear cart here. Wait until receipt is closed.
       setReceipt(result.receipt);
     } else if (result.success && result.order) {
-      clearCart();
+      // FIX: Do NOT clear cart here.
       const paymentTime = new Date().toISOString();
       const validTillTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
       
@@ -80,12 +86,13 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
         studentName: user.full_name || 'Student',
         studentEmail: user.email,
         orderId: result.order.id,
-        items: orderItems,
+        items: currentItems,
         totalAmount: parseFloat(total.toFixed(2)),
         paymentMethod: selectedMethod,
         paymentStatus: paymentStatus === 'PAID' ? 'SUCCESS' : 'PENDING',
         paymentTime: paymentTime,
         validTillTime: validTillTime,
+        orderStatus: result.order.status
       };
       setReceipt(fallbackReceipt);
     } else {
@@ -96,6 +103,8 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
   };
 
   const handleReceiptClose = () => {
+    // FIX: Clear cart only when user is done viewing the receipt
+    clearCart();
     setReceipt(null);
     onPaymentComplete();
   };
@@ -111,6 +120,7 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
     );
   }
 
+  // Only show Empty Cart if we are NOT processing and NOT showing a receipt
   if (cart.length === 0 && !receipt && !processing) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -171,7 +181,7 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
                 <span>
                   {item.name} x {item.quantity}
                 </span>
-                <span className="font-medium">₹{item.price * item.quantity}</span>
+                <span className="font-medium">₹{(item.price * item.quantity).toFixed(2)}</span>
               </div>
             ))}
             <div className="border-t pt-3 space-y-2">
