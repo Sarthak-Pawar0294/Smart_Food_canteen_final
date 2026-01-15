@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto'; // New: Import UUID generator
 
 // --------------------------------------
 // SETUP
@@ -17,14 +18,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const OWNER_EMAIL = "canteen@vit.edu";
-const PORT = process.env.PORT || 3001; // Fix: Support deployment ports
+const PORT = process.env.PORT || 3001;
 
 // --------------------------------------
 // SQLITE SETUP
 // --------------------------------------
 const db = new Database("database.db");
 
-// Fix: Removed 'DEFAULT' for created_at to ensure consistent JS-generated ISO strings
+// Fix: Changed 'id' to TEXT for UUIDs
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY, 
   user_id INTEGER,
   items TEXT,
   total REAL,
@@ -100,35 +101,43 @@ app.post('/api/login', (req, res) => {
 });
 
 // --------------------------------------
-// CREATE ORDER
+// CREATE ORDER (Updated for UUID)
 // --------------------------------------
 app.post('/api/orders', (req, res) => {
   try {
     const { userId, items, total, paymentMethod, paymentStatus } = req.body;
 
-    if (!userId || !items || !total) {
-      return res.status(400).json({ error: "Missing fields" });
+    // Improvement: Basic validation to prevent empty orders
+    if (!userId || !items || items.length === 0 || !total) {
+      return res.status(400).json({ error: "Invalid order data" });
     }
 
     const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
 
-    // Fix: Generate all dates here as ISO strings for consistency
+    // Generate Dates
     const now = new Date();
     const paymentTime = now.toISOString();
     const createdAt = now.toISOString();
     const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+    // New: Generate UUID
+    const orderId = randomUUID();
 
     const paymentData = {
       studentName: user?.full_name || "Student",
       studentEmail: user?.email || ""
     };
 
-    const result = db.prepare(`
+    // Insert with UUID
+    const stmt = db.prepare(`
       INSERT INTO orders 
-      (user_id, items, total, status, payment_method, payment_status,
+      (id, user_id, items, total, status, payment_method, payment_status,
        payment_time, valid_till_time, payment_data, created_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-    `).run(
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+      orderId, // Use the generated UUID
       userId,
       JSON.stringify(items),
       total,
@@ -137,10 +146,10 @@ app.post('/api/orders', (req, res) => {
       paymentTime,
       validTillTime,
       JSON.stringify(paymentData),
-      createdAt // Explicitly storing created_at
+      createdAt
     );
 
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(result.lastInsertRowid);
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
 
     const receipt = {
       studentName: paymentData.studentName,
@@ -173,7 +182,8 @@ app.get('/api/orders/all', (req, res) => {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const orders = db.prepare("SELECT * FROM orders ORDER BY id DESC").all();
+    // Sort by created_at desc (newest first)
+    const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
     return res.json({ success: true, orders });
 
   } catch (err) {
@@ -187,7 +197,7 @@ app.get('/api/orders/all', (req, res) => {
 // --------------------------------------
 app.get('/api/orders/:userId', (req, res) => {
   try {
-    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC").all(req.params.userId);
+    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
     return res.json({ success: true, orders });
   } catch (err) {
     console.error(err);
