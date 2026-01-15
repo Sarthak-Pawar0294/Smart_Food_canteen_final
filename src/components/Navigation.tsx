@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { Home, ShoppingCart, History, LogOut, Settings, LucideIcon } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { Home, ShoppingCart, History, LogOut, Settings, Moon, Sun, LucideIcon } from 'lucide-react';
 
 interface NavigationProps {
   currentPage: string;
@@ -17,10 +18,11 @@ interface NavItem {
 
 export default function Navigation({ currentPage, onNavigate, isOwner }: NavigationProps) {
   const { user, logout } = useAuth();
-  const { getTotalItems, clearCart } = useCart(); // Added clearCart
+  const { getTotalItems, clearCart } = useCart();
+  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = () => {
-    clearCart(); // Fix: Clear cart on logout to prevent data leak between users
+    clearCart();
     logout();
     window.location.reload();
   };
@@ -44,11 +46,11 @@ export default function Navigation({ currentPage, onNavigate, isOwner }: Navigat
   const navItems: NavItem[] = isOwner ? [...baseNavItems, ...ownerOnlyItems] : baseNavItems;
 
   return (
-    <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <nav className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-colors">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
-            <h1 className="text-xl font-bold text-slate-900">Smart Food Canteen</h1>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Smart Food Canteen</h1>
             <div className="hidden md:flex gap-2">
               {navItems.map((item) => (
                 <button
@@ -56,8 +58,8 @@ export default function Navigation({ currentPage, onNavigate, isOwner }: Navigat
                   onClick={() => onNavigate(item.id)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition relative ${
                     currentPage === item.id
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white dark:bg-blue-600'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
@@ -73,15 +75,24 @@ export default function Navigation({ currentPage, onNavigate, isOwner }: Navigat
           </div>
 
           <div className="flex items-center gap-4">
+             {/* Theme Toggle */}
+             <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              title="Toggle Theme"
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
+
             <div className="text-right hidden md:block">
-              <p className="text-sm font-medium text-slate-900">
+              <p className="text-sm font-medium text-slate-900 dark:text-white">
                 {getDisplayName()}
               </p>
-              <p className="text-xs text-slate-500">{user?.email}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
             </div>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition"
+              className="flex items-center gap-2 px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
             >
               <LogOut className="w-5 h-5" />
               <span className="hidden md:inline">Logout</span>
@@ -96,8 +107,8 @@ export default function Navigation({ currentPage, onNavigate, isOwner }: Navigat
               onClick={() => onNavigate(item.id)}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-medium transition relative ${
                 currentPage === item.id
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-700 hover:bg-slate-100'
+                  ? 'bg-slate-900 text-white dark:bg-blue-600'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <item.icon className="w-5 h-5" />
