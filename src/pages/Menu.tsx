@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { menuItems } from '../data/menuData';
-import { Plus, Search, Filter, Award } from 'lucide-react';
+import { Plus, Search, Filter } from 'lucide-react';
 
 export default function Menu() {
   const { user } = useAuth();
@@ -25,7 +25,7 @@ export default function Menu() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors">
-      {/* Header with Search & Loyalty */}
+      {/* Header with Search */}
       <div className="bg-white dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-16 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
           
@@ -41,12 +41,7 @@ export default function Menu() {
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-blue-600 bg-slate-50 dark:bg-slate-800 dark:text-white"
                 />
             </div>
-
-            {/* Loyalty Points Badge */}
-            <div className="w-full md:w-auto bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-4 py-3 md:py-2 rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap">
-                <Award className="w-5 h-5" />
-                <span className="font-bold">{user?.points || 0} Points</span>
-            </div>
+            {/* Points Badge Removed */}
           </div>
 
           {/* Categories */}
