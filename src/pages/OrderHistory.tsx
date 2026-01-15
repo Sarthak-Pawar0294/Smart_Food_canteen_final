@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Order, Receipt as ReceiptType, CartItem, PaymentMethod } from '../types';
-import { Clock, CheckCircle, Package, CreditCard, Banknote, Eye } from 'lucide-react';
+import { Clock, CheckCircle, Package, Eye, XCircle } from 'lucide-react';
 import Receipt from '../components/Receipt';
 
 export default function OrderHistory() {
@@ -50,6 +50,19 @@ export default function OrderHistory() {
     };
   };
 
+  const handleCancel = async (orderId: string) => {
+    if (!confirm("Are you sure you want to cancel this order?")) return;
+
+    const result = await api.cancelOrder(orderId);
+    if (result.success) {
+      setOrders(prev => prev.map(o => 
+        o.id === orderId ? { ...o, status: 'CANCELLED' } : o
+      ));
+    } else {
+      alert(result.error);
+    }
+  };
+
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
@@ -57,7 +70,6 @@ export default function OrderHistory() {
       const res = await api.getOrders(user.id);
 
       if (res.success && res.orders) {
-        // sanitize orders BEFORE storing
         const cleaned = res.orders.map((o) => ({
           ...o,
           id: safeId(o.id),
@@ -81,6 +93,7 @@ export default function OrderHistory() {
       case 'pending': return <Clock className="w-5 h-5 text-yellow-600" />;
       case 'ready': return <Package className="w-5 h-5 text-blue-600" />;
       case 'accepted': return <Clock className="w-5 h-5 text-orange-600" />;
+      case 'cancelled': return <XCircle className="w-5 h-5 text-red-600" />;
       default: return <Package className="w-5 h-5 text-slate-600" />;
     }
   };
@@ -91,6 +104,7 @@ export default function OrderHistory() {
       case 'pending': return 'bg-yellow-100 text-yellow-700';
       case 'ready': return 'bg-blue-100 text-blue-700';
       case 'accepted': return 'bg-orange-100 text-orange-700';
+      case 'cancelled': return 'bg-red-100 text-red-700';
       default: return 'bg-slate-100 text-slate-700';
     }
   };
@@ -168,16 +182,28 @@ export default function OrderHistory() {
                 </div>
               </div>
 
-              {/* Button */}
-              {order.payment_status === 'PAID' && (
-                <button
-                  onClick={() => setSelectedReceipt(buildReceiptFromOrder(order))}
-                  className="w-full mt-4 flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium"
-                >
-                  <Eye className="w-4 h-4" />
-                  View Receipt
-                </button>
-              )}
+              {/* Buttons */}
+              <div className="flex gap-2 mt-4">
+                {order.payment_status === 'PAID' && (
+                  <button
+                    onClick={() => setSelectedReceipt(buildReceiptFromOrder(order))}
+                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View Receipt
+                  </button>
+                )}
+
+                {order.status === 'pending' && (
+                  <button
+                    onClick={() => handleCancel(order.id)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-red-50 text-red-600 py-2.5 rounded-lg hover:bg-red-100 transition font-medium border border-red-200"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Cancel Order
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
