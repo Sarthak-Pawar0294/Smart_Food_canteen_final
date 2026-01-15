@@ -10,6 +10,10 @@ import {
   AlertCircle,
   CreditCard,
   Banknote,
+  Copy,
+  XCircle,
+  TrendingUp,
+  Calendar
 } from "lucide-react";
 
 export default function OwnerDashboard() {
@@ -19,9 +23,21 @@ export default function OwnerDashboard() {
   const [error, setError] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // ------------------------------
-  // FETCH ALL ORDERS
-  // ------------------------------
+  // Stats State
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    pendingCount: 0,
+    todayCount: 0
+  });
+
+  const safeJSON = (data: any) => {
+    try {
+      return typeof data === "string" ? JSON.parse(data) : data;
+    } catch (e) {
+      return null;
+    }
+  };
+
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
@@ -29,17 +45,14 @@ export default function OwnerDashboard() {
       const result = await api.getAllOrders(user.email);
 
       if (result.success && result.orders) {
-        // FIX: Ensure items & payment_data get parsed
         const cleaned = result.orders.map((o) => ({
           ...o,
-          items: typeof o.items === "string" ? JSON.parse(o.items) : o.items,
-          payment_data:
-            typeof o.payment_data === "string"
-              ? JSON.parse(o.payment_data)
-              : o.payment_data,
+          items: safeJSON(o.items) || [],
+          payment_data: safeJSON(o.payment_data) || {},
         }));
 
         setOrders(cleaned);
+        calculateStats(cleaned);
       } else {
         setError(result.error || "Failed to load orders");
       }
@@ -50,107 +63,90 @@ export default function OwnerDashboard() {
     fetchOrders();
   }, [user]);
 
-  // ------------------------------
-  // UPDATE ORDER STATUS
-  // ------------------------------
+  const calculateStats = (data: Order[]) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    const revenue = data
+      .filter(o => o.status !== 'CANCELLED' && o.status !== 'pending') // Only count accepted/completed money
+      .reduce((acc, curr) => acc + (parseFloat(String(curr.total)) || 0), 0);
+
+    const pending = data.filter(o => o.status === 'pending').length;
+
+    const today = data.filter(o => {
+      if (!o.created_at) return false;
+      return o.created_at.startsWith(todayStr);
+    }).length;
+
+    setStats({
+      totalRevenue: revenue,
+      pendingCount: pending,
+      todayCount: today
+    });
+  };
+
   const handleStatusUpdate = async (
     orderId: string,
     newStatus: "ACCEPTED" | "READY" | "COMPLETED"
   ) => {
     if (!user) return;
-
     setUpdatingId(orderId);
-
     const result = await api.updateOrderStatus(orderId, newStatus, user.email);
 
     if (result.success && result.order) {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-      );
+      const updatedOrders = orders.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+      setOrders(updatedOrders);
+      calculateStats(updatedOrders);
     } else {
       setError(result.error || "Failed to update order");
     }
-
     setUpdatingId(null);
   };
 
-  // ------------------------------
-  // COLORS & ICONS
-  // ------------------------------
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert("Order ID copied: " + text);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "COMPLETED":
-        return "bg-green-100 text-green-700 border border-green-300";
-      case "READY":
-        return "bg-blue-100 text-blue-700 border border-blue-300";
-      case "ACCEPTED":
-        return "bg-yellow-100 text-yellow-700 border border-yellow-300";
-      case "pending":
-        return "bg-gray-100 text-gray-700 border border-gray-300";
-      default:
-        return "bg-slate-100 text-slate-700";
+      case "COMPLETED": return "bg-green-100 text-green-700 border border-green-300";
+      case "READY": return "bg-blue-100 text-blue-700 border border-blue-300";
+      case "ACCEPTED": return "bg-yellow-100 text-yellow-700 border border-yellow-300";
+      case "pending": return "bg-gray-100 text-gray-700 border border-gray-300";
+      case "CANCELLED": return "bg-red-100 text-red-700 border border-red-300";
+      default: return "bg-slate-100 text-slate-700";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "COMPLETED":
-        return <Check className="w-5 h-5" />;
-      case "READY":
-        return <Package className="w-5 h-5" />;
-      case "ACCEPTED":
-        return <Clock className="w-5 h-5" />;
-      default:
-        return <AlertCircle className="w-5 h-5" />;
+      case "COMPLETED": return <Check className="w-5 h-5" />;
+      case "READY": return <Package className="w-5 h-5" />;
+      case "ACCEPTED": return <Clock className="w-5 h-5" />;
+      case "CANCELLED": return <XCircle className="w-5 h-5" />;
+      default: return <AlertCircle className="w-5 h-5" />;
     }
   };
 
-  const getPaymentStatusColor = (status?: string) => {
-    switch (status) {
-      case "PAID":
-        return "bg-green-100 text-green-700";
-      case "CASH":
-        return "bg-orange-100 text-orange-700";
-      default:
-        return "bg-slate-100 text-slate-700";
-    }
-  };
-
-  const getPaymentMethodLabel = (method?: string) => {
-    switch (method) {
-      case "PHONEPE":
-        return "PhonePe";
-      case "GPAY":
-        return "Google Pay";
-      case "UPI":
-        return "UPI";
-      case "CASH":
-        return "Cash";
-      default:
-        return method || "N/A";
-    }
-  };
-
-  // ------------------------------
-  // TIME FIX (IST)
-  // ------------------------------
   const formatLocalTime = (timestamp: string) => {
     if (!timestamp) return "N/A";
-
-    const dt = new Date(timestamp.replace(" ", "T"));
+    const dt = new Date(timestamp);
     return dt.toLocaleTimeString("en-IN", {
       hour: "2-digit",
       minute: "2-digit",
     });
   };
 
-  // ------------------------------
-  // COUNTERS
-  // ------------------------------
-  const getPendingCount = () => orders.filter((o) => o.status === "pending").length;
-  const getAcceptedCount = () => orders.filter((o) => o.status === "ACCEPTED").length;
-  const getReadyCount = () => orders.filter((o) => o.status === "READY").length;
-  const getCompletedCount = () => orders.filter((o) => o.status === "COMPLETED").length;
+  const getPaymentMethodLabel = (method?: string) => {
+    switch (method) {
+      case "PHONEPE": return "PhonePe";
+      case "GPAY": return "Google Pay";
+      case "UPI": return "UPI";
+      case "CASH": return "Cash";
+      default: return method || "N/A";
+    }
+  };
 
   if (loading) {
     return (
@@ -163,9 +159,44 @@ export default function OwnerDashboard() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
-
         <h1 className="text-3xl font-bold mb-1">Owner Dashboard</h1>
-        <p className="text-slate-600 mb-6">Manage all student orders</p>
+        <p className="text-slate-600 mb-8">Manage all student orders</p>
+
+        {/* Analytics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-slate-500 font-medium">Total Revenue</h3>
+              <div className="p-2 bg-green-50 rounded-lg text-green-600">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">₹{stats.totalRevenue.toFixed(2)}</p>
+            <p className="text-sm text-slate-400 mt-1">Processed orders only</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-slate-500 font-medium">Pending Orders</h3>
+              <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
+                <Clock className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">{stats.pendingCount}</p>
+            <p className="text-sm text-slate-400 mt-1">Needs attention</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-slate-500 font-medium">Today's Orders</h3>
+              <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                <Calendar className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">{stats.todayCount}</p>
+            <p className="text-sm text-slate-400 mt-1">{new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
@@ -173,27 +204,6 @@ export default function OwnerDashboard() {
           </div>
         )}
 
-        {/* Stats Boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white shadow rounded-lg p-6">
-            <p className="text-sm text-slate-600 font-medium">Pending</p>
-            <p className="text-3xl font-bold">{getPendingCount()}</p>
-          </div>
-          <div className="bg-white shadow rounded-lg p-6">
-            <p className="text-sm text-slate-600 font-medium">Accepted</p>
-            <p className="text-3xl font-bold text-yellow-600">{getAcceptedCount()}</p>
-          </div>
-          <div className="bg-white shadow rounded-lg p-6">
-            <p className="text-sm text-slate-600 font-medium">Ready</p>
-            <p className="text-3xl font-bold text-blue-600">{getReadyCount()}</p>
-          </div>
-          <div className="bg-white shadow rounded-lg p-6">
-            <p className="text-sm text-slate-600 font-medium">Completed</p>
-            <p className="text-3xl font-bold text-green-600">{getCompletedCount()}</p>
-          </div>
-        </div>
-
-        {/* Orders Table */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -201,123 +211,95 @@ export default function OwnerDashboard() {
                 <tr>
                   <th className="px-4 py-3 text-left">Order ID</th>
                   <th className="px-4 py-3 text-left">Student</th>
-                  <th className="px-4 py-3 text-left">Email</th>
                   <th className="px-4 py-3 text-left">Items</th>
                   <th className="px-4 py-3 text-left">Total</th>
-                  <th className="px-4 py-3 text-left">Payment</th>
                   <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3 text-left">Time</th>
                   <th className="px-4 py-3 text-left">Actions</th>
                 </tr>
               </thead>
-
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id} className="border-b hover:bg-slate-50">
-                    <td className="px-4 py-4">{order.id}</td>
-                    <td className="px-4 py-4">{order.payment_data?.studentName}</td>
-                    <td className="px-4 py-4">{order.payment_data?.studentEmail}</td>
-
+                    <td className="px-4 py-4">
+                      <div 
+                        className="flex items-center gap-1 group cursor-pointer" 
+                        title={order.id}
+                        onClick={() => copyToClipboard(order.id)}
+                      >
+                        <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                          {order.id.slice(0, 8)}...
+                        </span>
+                        <Copy className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="font-medium text-slate-900">{order.payment_data?.studentName}</div>
+                      <div className="text-xs text-slate-500">{order.payment_data?.studentEmail}</div>
+                    </td>
                     <td className="px-4 py-4 text-sm">
-                      {order.items?.map((it, idx) => (
-                        <div key={idx}>
-                          {it.name} x {it.quantity}
+                      {Array.isArray(order.items) && order.items.map((it: any, idx: number) => (
+                        <div key={idx} className="whitespace-nowrap">
+                          {it.name} <span className="text-slate-500">x{it.quantity}</span>
                         </div>
                       ))}
                     </td>
-
                     <td className="px-4 py-4 font-semibold">
                       ₹{parseFloat(String(order.total)).toFixed(2)}
-                    </td>
-
-                    <td className="px-4 py-4">
-                      <div className="flex flex-col text-xs">
-                        <div className="flex items-center gap-1">
-                          {order.payment_method === "CASH" ? (
-                            <Banknote className="w-3 h-3" />
-                          ) : (
-                            <CreditCard className="w-3 h-3" />
-                          )}
-                          {getPaymentMethodLabel(order.payment_method)}
-                        </div>
-                        <span
-                          className={`px-2 py-0.5 rounded mt-1 w-fit ${getPaymentStatusColor(
-                            order.payment_status
-                          )}`}
-                        >
-                          {order.payment_status === "PAID"
-                            ? "Paid"
-                            : order.payment_status}
-                        </span>
+                      <div className="text-xs font-normal text-slate-500 mt-1 flex items-center gap-1">
+                        {order.payment_method === "CASH" ? <Banknote className="w-3 h-3"/> : <CreditCard className="w-3 h-3"/>}
+                        {getPaymentMethodLabel(order.payment_method)}
                       </div>
                     </td>
-
                     <td className="px-4 py-4">
-                      <div
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${getStatusColor(
-                          order.status
-                        )}`}
-                      >
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit text-sm ${getStatusColor(order.status)}`}>
                         {getStatusIcon(order.status)}
-                        {order.status}
+                        <span className="capitalize">{order.status}</span>
                       </div>
                     </td>
-
-                    <td className="px-4 py-4">{formatLocalTime(order.created_at)}</td>
-
+                    <td className="px-4 py-4 text-sm text-slate-600">{formatLocalTime(order.created_at)}</td>
                     <td className="px-4 py-4">
                       <div className="flex gap-2">
                         {order.status === "pending" && (
                           <button
                             onClick={() => handleStatusUpdate(order.id, "ACCEPTED")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200"
+                            className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm font-medium transition"
                           >
-                            {updatingId === order.id ? (
-                              <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "Accept"
-                            )}
+                            Accept
                           </button>
                         )}
-
                         {order.status === "ACCEPTED" && (
                           <button
                             onClick={() => handleStatusUpdate(order.id, "READY")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium transition"
                           >
-                            {updatingId === order.id ? (
-                              <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "Ready"
-                            )}
+                            Ready
                           </button>
                         )}
-
                         {order.status === "READY" && (
                           <button
                             onClick={() => handleStatusUpdate(order.id, "COMPLETED")}
                             disabled={updatingId === order.id}
-                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200"
+                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium transition"
                           >
-                            {updatingId === order.id ? (
-                              <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "Done"
-                            )}
+                            Complete
                           </button>
                         )}
-
                         {order.status === "COMPLETED" && (
-                          <span className="text-slate-500 text-sm">Done</span>
+                          <span className="text-slate-400 text-sm italic">Done</span>
+                        )}
+                        {order.status === "CANCELLED" && (
+                          <span className="text-red-500 text-sm font-medium flex items-center gap-1">
+                            <XCircle className="w-4 h-4" /> Cancelled
+                          </span>
                         )}
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-
             </table>
           </div>
         </div>

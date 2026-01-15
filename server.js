@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 
 // --------------------------------------
 // SETUP
@@ -17,12 +18,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const OWNER_EMAIL = "canteen@vit.edu";
+const PORT = process.env.PORT || 3001;
 
 // --------------------------------------
 // SQLITE SETUP
 // --------------------------------------
 const db = new Database("database.db");
 
+// 1. Create Tables
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY, 
   user_id INTEGER,
   items TEXT,
   total REAL,
@@ -43,19 +46,33 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_time TEXT,
   valid_till_time TEXT,
   payment_data TEXT,
-  created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  created_at TEXT
 );
 `);
+
+// 2. Auto-Seed Users (Fix for "User not found")
+const userCount = db.prepare("SELECT count(*) as count FROM users").get();
+
+if (userCount.count === 0) {
+  console.log("⚠ Database is empty. Seeding default users...");
+  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
+  
+  // Owner Account
+  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen");
+  
+  // Student Account
+  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345");
+  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107");
+  
+  console.log("✔ Users seeded!");
+}
 
 // --------------------------------------
 // SERVE FRONTEND
 // --------------------------------------
 const distPath = join(__dirname, "dist");
 if (fs.existsSync(distPath)) {
-  console.log("✔ Serving frontend from DIST folder");
   app.use(express.static(distPath));
-} else {
-  console.log("⚠ No dist folder found — using Vite dev server instead");
 }
 
 // --------------------------------------
@@ -64,20 +81,24 @@ if (fs.existsSync(distPath)) {
 app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
-
+    
+    // Validate Email Format
     const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
+    // Allow old test format (5 digits) or new format (10 digits)
+    const oldEmailRegex = /^[a-z]+\.[0-9]+@vit\.edu$/i;
 
-    if (!emailRegex.test(email) && email !== OWNER_EMAIL) {
+    if (!oldEmailRegex.test(email) && email !== OWNER_EMAIL) {
       return res.status(400).json({ error: "Invalid email format" });
     }
 
-    const prnFromEmail =
-      email === OWNER_EMAIL
-        ? "canteen"
-        : email.match(/\.(\d{10})@/)?.[1];
-
-    if (!prnFromEmail) {
-      return res.status(400).json({ error: "Invalid email format" });
+    // Extract PRN (password)
+    let prnFromEmail = "";
+    if (email === OWNER_EMAIL) {
+      prnFromEmail = "canteen";
+    } else {
+      // Get the number part between . and @
+      const match = email.match(/\.([0-9]+)@/);
+      prnFromEmail = match ? match[1] : "";
     }
 
     if (password !== prnFromEmail) {
@@ -98,46 +119,53 @@ app.post('/api/login', (req, res) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: email === OWNER_EMAIL ? "OWNER" : "STUDENT"
+        role: user.role // Ensure role is passed
       }
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("Login Error:", err);
+    // Return specific error if DB schema is wrong
+    if (err.message.includes("no such column")) {
+      return res.status(500).json({ error: "Database schema mismatch. Please reset database." });
+    }
     return res.status(500).json({ error: "Server error" });
   }
 });
 
 // --------------------------------------
-// CREATE ORDER  (PATCH FIXED HERE)
+// CREATE ORDER
 // --------------------------------------
 app.post('/api/orders', (req, res) => {
   try {
     const { userId, items, total, paymentMethod, paymentStatus } = req.body;
 
-    if (!userId || !items || !total) {
-      return res.status(400).json({ error: "Missing fields" });
+    if (!userId || !items || items.length === 0 || !total) {
+      return res.status(400).json({ error: "Invalid order data" });
     }
 
-    const user = db.prepare(
-      "SELECT email, full_name FROM users WHERE id = ?"
-    ).get(userId);
+    const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
 
-    const paymentTime = new Date().toISOString();
-    const validTillTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const now = new Date();
+    const paymentTime = now.toISOString();
+    const createdAt = now.toISOString();
+    const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    const orderId = randomUUID();
 
     const paymentData = {
       studentName: user?.full_name || "Student",
       studentEmail: user?.email || ""
     };
 
-    // ★★★★★ PATCH APPLIED HERE ★★★★★
-    const result = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO orders 
-      (user_id, items, total, status, payment_method, payment_status,
+      (id, user_id, items, total, status, payment_method, payment_status,
        payment_time, valid_till_time, payment_data, created_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `).run(
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+      orderId,
       userId,
       JSON.stringify(items),
       total,
@@ -145,11 +173,11 @@ app.post('/api/orders', (req, res) => {
       paymentStatus || "CASH",
       paymentTime,
       validTillTime,
-      JSON.stringify(paymentData)
+      JSON.stringify(paymentData),
+      createdAt
     );
 
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?")
-      .get(result.lastInsertRowid);
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
 
     const receipt = {
       studentName: paymentData.studentName,
@@ -178,16 +206,11 @@ app.post('/api/orders', (req, res) => {
 app.get('/api/orders/all', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
-
     if (ownerEmail !== OWNER_EMAIL) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const orders = db.prepare(`
-      SELECT * FROM orders
-      ORDER BY id DESC
-    `).all();
-
+    const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
     return res.json({ success: true, orders });
 
   } catch (err) {
@@ -201,14 +224,8 @@ app.get('/api/orders/all', (req, res) => {
 // --------------------------------------
 app.get('/api/orders/:userId', (req, res) => {
   try {
-    const orders = db.prepare(`
-      SELECT * FROM orders
-      WHERE user_id = ?
-      ORDER BY id DESC
-    `).all(req.params.userId);
-
+    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
     return res.json({ success: true, orders });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to fetch orders" });
@@ -221,28 +238,52 @@ app.get('/api/orders/:userId', (req, res) => {
 app.patch('/api/orders/:orderId', (req, res) => {
   try {
     const ownerEmail = req.headers["x-owner-email"];
-
     if (ownerEmail !== OWNER_EMAIL) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
     const { status } = req.body;
-
     if (!["ACCEPTED", "READY", "COMPLETED"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    db.prepare("UPDATE orders SET status = ? WHERE id = ?")
-      .run(status, req.params.orderId);
-
-    const updated = db.prepare("SELECT * FROM orders WHERE id = ?")
-      .get(req.params.orderId);
+    db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.orderId);
+    const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.orderId);
 
     return res.json({ success: true, order: updated });
 
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to update order" });
+  }
+});
+
+// --------------------------------------
+// CANCEL ORDER (STUDENT)
+// --------------------------------------
+app.patch('/api/orders/:orderId/cancel', (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (order.status !== 'pending') {
+      return res.status(400).json({ 
+        error: "Cannot cancel order. It has already been processed." 
+      });
+    }
+
+    db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
+
+    return res.json({ success: true, message: "Order cancelled successfully" });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to cancel order" });
   }
 });
 
@@ -257,12 +298,16 @@ app.get('/api/healthz', (req, res) => {
 // SPA FALLBACK
 // --------------------------------------
 app.get('*', (req, res) => {
-  res.sendFile(join(__dirname, "dist", "index.html"));
+  if (fs.existsSync(distPath)) {
+    res.sendFile(join(__dirname, "dist", "index.html"));
+  } else {
+    res.status(404).send("Frontend not built. Run 'npm run build'");
+  }
 });
 
 // --------------------------------------
 // START SERVER
 // --------------------------------------
-app.listen(3001, () => {
-  console.log("✔ SQLite backend running on port 3001");
+app.listen(PORT, () => {
+  console.log(`✔ Backend running on port ${PORT}`);
 });

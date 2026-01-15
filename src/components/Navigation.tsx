@@ -17,9 +17,10 @@ interface NavItem {
 
 export default function Navigation({ currentPage, onNavigate, isOwner }: NavigationProps) {
   const { user, logout } = useAuth();
-  const { getTotalItems } = useCart();
+  const { getTotalItems, clearCart } = useCart(); // Added clearCart
 
   const handleLogout = () => {
+    clearCart(); // Fix: Clear cart on logout to prevent data leak between users
     logout();
     window.location.reload();
   };
