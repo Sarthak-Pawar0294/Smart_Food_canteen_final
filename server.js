@@ -25,6 +25,7 @@ const PORT = process.env.PORT || 3001;
 // --------------------------------------
 const db = new Database("database.db");
 
+// 1. Create Tables
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +50,23 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 `);
 
+// 2. Auto-Seed Users (Fix for "User not found")
+const userCount = db.prepare("SELECT count(*) as count FROM users").get();
+
+if (userCount.count === 0) {
+  console.log("⚠ Database is empty. Seeding default users...");
+  const insertUser = db.prepare("INSERT INTO users (email, full_name, role, prn_hash) VALUES (?, ?, ?, ?)");
+  
+  // Owner Account
+  insertUser.run("canteen@vit.edu", "Canteen Admin", "OWNER", "canteen");
+  
+  // Student Account
+  insertUser.run("john.12345@vit.edu", "John Doe", "STUDENT", "12345");
+  insertUser.run("sarthak.1251090107@vit.edu", "Sarthak Pawar", "STUDENT", "1251090107");
+  
+  console.log("✔ Users seeded!");
+}
+
 // --------------------------------------
 // SERVE FRONTEND
 // --------------------------------------
@@ -63,13 +81,25 @@ if (fs.existsSync(distPath)) {
 app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    // Validate Email Format
     const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
+    // Allow old test format (5 digits) or new format (10 digits)
+    const oldEmailRegex = /^[a-z]+\.[0-9]+@vit\.edu$/i;
 
-    if (!emailRegex.test(email) && email !== OWNER_EMAIL) {
+    if (!oldEmailRegex.test(email) && email !== OWNER_EMAIL) {
       return res.status(400).json({ error: "Invalid email format" });
     }
 
-    const prnFromEmail = email === OWNER_EMAIL ? "canteen" : email.match(/\.(\d{10})@/)?.[1];
+    // Extract PRN (password)
+    let prnFromEmail = "";
+    if (email === OWNER_EMAIL) {
+      prnFromEmail = "canteen";
+    } else {
+      // Get the number part between . and @
+      const match = email.match(/\.([0-9]+)@/);
+      prnFromEmail = match ? match[1] : "";
+    }
 
     if (password !== prnFromEmail) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -89,12 +119,16 @@ app.post('/api/login', (req, res) => {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: email === OWNER_EMAIL ? "OWNER" : "STUDENT"
+        role: user.role // Ensure role is passed
       }
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("Login Error:", err);
+    // Return specific error if DB schema is wrong
+    if (err.message.includes("no such column")) {
+      return res.status(500).json({ error: "Database schema mismatch. Please reset database." });
+    }
     return res.status(500).json({ error: "Server error" });
   }
 });
@@ -231,21 +265,18 @@ app.patch('/api/orders/:orderId/cancel', (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // 1. Check current status
     const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // 2. Only allow cancellation if status is 'pending'
     if (order.status !== 'pending') {
       return res.status(400).json({ 
-        error: "Cannot cancel order. It has already been processed by the canteen." 
+        error: "Cannot cancel order. It has already been processed." 
       });
     }
 
-    // 3. Update status to CANCELLED
     db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
 
     return res.json({ success: true, message: "Order cancelled successfully" });
