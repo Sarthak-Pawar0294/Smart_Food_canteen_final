@@ -108,4 +108,20 @@ export const api = {
       return { success: false, error: 'Failed to update order status. Please try again.' };
     }
   },
+
+  async cancelOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_URL}/orders/${orderId}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  },
 };
