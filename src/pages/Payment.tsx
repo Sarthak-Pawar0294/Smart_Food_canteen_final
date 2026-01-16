@@ -172,4 +172,90 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
           )}
         </div>
 
-        <div className="bg-white dark:
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 p-6 mb-6">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Order Summary</h2>
+          <div className="space-y-3">
+            {cart.map((item) => (
+              <div key={item.id} className="flex justify-between text-slate-700 dark:text-slate-300">
+                <span>
+                  {item.name} x {item.quantity}
+                </span>
+                <span className="font-medium">₹{(item.price * item.quantity).toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-2">
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Subtotal</span>
+                <span>₹{subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Tax (5%)</span>
+                <span>₹{tax.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xl font-bold text-slate-900 dark:text-white pt-2 border-t border-slate-100 dark:border-slate-700">
+                <span>Total</span>
+                <span>₹{total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 p-6 mb-6">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Select Payment Method</h2>
+          <div className="space-y-3">
+            {paymentMethods.map((method) => (
+              <button
+                key={method.id}
+                onClick={() => setSelectedMethod(method.id)}
+                className={`w-full flex items-center gap-4 p-4 rounded-lg border-2 transition text-left ${
+                  selectedMethod === method.id
+                    ? 'border-slate-900 bg-slate-50 dark:border-blue-500 dark:bg-slate-700'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800'
+                }`}
+              >
+                <div className={`p-3 rounded-full shrink-0 ${
+                  selectedMethod === method.id 
+                    ? 'bg-slate-900 text-white dark:bg-blue-600' 
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                }`}>
+                  {method.icon}
+                </div>
+                <div className="flex-1">
+                  <p className={`font-semibold ${selectedMethod === method.id ? 'text-slate-900 dark:text-white' : 'text-slate-900 dark:text-white'}`}>
+                    {method.name}
+                  </p>
+                  <p className={`text-sm ${selectedMethod === method.id ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {method.description}
+                  </p>
+                </div>
+                {selectedMethod === method.id && (
+                  <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400 shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={handleConfirmPayment}
+          disabled={!selectedMethod}
+          className="w-full bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-lg font-medium hover:bg-slate-800 dark:hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg shadow-lg"
+        >
+          {selectedMethod === 'CASH' ? 'Place Order' : 'Pay & Order'}
+        </button>
+
+        <p className="text-center text-slate-500 dark:text-slate-500 text-sm mt-4">
+          {selectedMethod === 'CASH'
+            ? 'You will pay at the canteen counter when collecting your order'
+            : 'Secure encrypted payment processing'}
+        </p>
+      </div>
+    </div>
+  );
+}
