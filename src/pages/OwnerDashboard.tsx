@@ -1,212 +1,218 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
-import { api } from "../services/api";
-import { Order } from "../types";
-import {
-  Check, Clock, Package, Loader, AlertCircle, CreditCard,
-  Banknote, Copy, XCircle, TrendingUp, Calendar, Download
-} from "lucide-react";
+import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
+import { Order, OrderStatus } from '../types';
+import { Clock, CheckCircle, Package, Utensils, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function OwnerDashboard() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [stats, setStats] = useState({ revenue: 0, pending: 0, total: 0 });
 
-  const [stats, setStats] = useState({
-    totalRevenue: 0,
-    pendingCount: 0,
-    todayCount: 0
-  });
-
-  const safeJSON = (data: any) => {
+  const fetchOrders = async () => {
     try {
-      return typeof data === "string" ? JSON.parse(data) : data;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    const fetchOrders = async () => {
-      if (!user) return;
-      const result = await api.getAllOrders(user.email);
+      const result = await api.getAllOrders();
       if (result.success && result.orders) {
-        const cleaned = result.orders.map((o) => ({
-          ...o,
-          items: safeJSON(o.items) || [],
-          payment_data: safeJSON(o.payment_data) || {},
-        }));
-        setOrders(cleaned);
-        calculateStats(cleaned);
+        setOrders(result.orders);
+        calculateStats(result.orders);
+        setError('');
       } else {
-        setError(result.error || "Failed to load orders");
+        setError('Failed to fetch orders');
       }
+    } catch (err) {
+      setError('Connection error');
+    } finally {
       setLoading(false);
-    };
+    }
+  };
+
+  const calculateStats = (orderList: Order[]) => {
+    const today = new Date().toDateString();
+    const todaysOrders = orderList.filter(o => new Date(o.created_at).toDateString() === today);
+    
+    setStats({
+      revenue: todaysOrders.reduce((sum, order) => sum + order.total, 0),
+      pending: orderList.filter(o => o.status === 'pending').length,
+      total: todaysOrders.length
+    });
+  };
+
+  const updateStatus = async (orderId: string, newStatus: OrderStatus) => {
+    const result = await api.updateOrderStatus(orderId, newStatus);
+    if (result.success) {
+      fetchOrders(); // Refresh list
+    }
+  };
+
+  // Poll for new orders every 5 seconds
+  useEffect(() => {
     fetchOrders();
-  }, [user]);
+    const interval = setInterval(fetchOrders, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const calculateStats = (data: Order[]) => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const revenue = data
-      .filter(o => o.status !== 'CANCELLED' && o.status !== 'pending')
-      .reduce((acc, curr) => acc + (parseFloat(String(curr.total)) || 0), 0);
-    const pending = data.filter(o => o.status === 'pending').length;
-    const today = data.filter(o => {
-      if (!o.created_at) return false;
-      return o.created_at.startsWith(todayStr);
-    }).length;
-    setStats({ totalRevenue: revenue, pendingCount: pending, todayCount: today });
-  };
-
-  const handleStatusUpdate = async (orderId: string, newStatus: any) => {
-    if (!user) return;
-    setUpdatingId(orderId);
-    const result = await api.updateOrderStatus(orderId, newStatus, user.email);
-    if (result.success && result.order) {
-      const updatedOrders = orders.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
-      setOrders(updatedOrders);
-      calculateStats(updatedOrders);
-    }
-    setUpdatingId(null);
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    alert("Copied: " + text);
-  };
-
-  const downloadCSV = () => {
-    if (orders.length === 0) return;
-    const headers = ["Order ID", "Student Name", "Items", "Total", "Status", "Date"];
-    const rows = orders.map(order => [
-      order.id,
-      order.payment_data?.studentName || "Unknown",
-      Array.isArray(order.items) ? order.items.map((i: any) => `${i.name} (${i.quantity})`).join(" | ") : "",
-      order.total,
-      order.status,
-      new Date(order.created_at).toLocaleDateString()
-    ]);
-    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "canteen_report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "COMPLETED": return "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800";
-      case "READY": return "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
-      case "ACCEPTED": return "bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800";
-      case "CANCELLED": return "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
-      default: return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
-    }
-  };
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-slate-950"><Loader className="animate-spin dark:text-white" /></div>;
+  if (!user || user.role !== 'OWNER') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-2" />
+          <h2 className="text-xl font-bold">Access Denied</h2>
+          <p>This page is restricted to Canteen Owners.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 py-8">
         
-        {/* Header with Export Button */}
-        <div className="flex justify-between items-center mb-6">
-            <div>
-                <h1 className="text-3xl font-bold mb-1 dark:text-white">Owner Dashboard</h1>
-                <p className="text-slate-600 dark:text-slate-400">Manage all student orders</p>
-            </div>
-            <button 
-                onClick={downloadCSV}
-                className="flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition"
-            >
-                <Download className="w-4 h-4" />
-                Export CSV
-            </button>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Kitchen Dashboard</h1>
+            <p className="text-slate-500 dark:text-slate-400">Manage orders and track live status</p>
+          </div>
+          <button 
+            onClick={fetchOrders}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
         </div>
 
-        {/* Analytics Cards */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-500 dark:text-slate-400 font-medium">Total Revenue</h3>
-              <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 dark:text-green-400"><TrendingUp className="w-6 h-6" /></div>
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                <Utensils className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Total Revenue (Today)</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">₹{stats.revenue.toFixed(2)}</p>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">₹{stats.totalRevenue.toFixed(2)}</p>
           </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-500 dark:text-slate-400 font-medium">Pending Orders</h3>
-              <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-yellow-600 dark:text-yellow-400"><Clock className="w-6 h-6" /></div>
+
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Pending Orders</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.pending}</p>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">{stats.pendingCount}</p>
           </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-500 dark:text-slate-400 font-medium">Today's Orders</h3>
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400"><Calendar className="w-6 h-6" /></div>
+
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                <Package className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Today's Orders</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.total}</p>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">{stats.todayCount}</p>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white dark:bg-slate-900 shadow rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-100 dark:bg-slate-800 border-b dark:border-slate-700">
-                <tr>
-                  {["Order ID", "Student", "Items", "Total", "Status", "Time", "Actions"].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-slate-700 dark:text-slate-300 font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td className="px-4 py-4">
-                       <div className="flex items-center gap-1 group cursor-pointer" onClick={() => copyToClipboard(order.id)}>
-                        <span className="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 dark:text-slate-300">{order.id.slice(0, 8)}...</span>
-                        <Copy className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100" />
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="font-medium text-slate-900 dark:text-white">{order.payment_data?.studentName}</div>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300">
-                      {Array.isArray(order.items) && order.items.map((it: any, idx: number) => (
-                        <div key={idx}>{it.name} x{it.quantity}</div>
-                      ))}
-                    </td>
-                    <td className="px-4 py-4 font-semibold dark:text-white">₹{parseFloat(String(order.total)).toFixed(2)}</td>
-                    <td className="px-4 py-4">
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit text-sm ${getStatusColor(order.status)}`}>
-                        <span className="capitalize">{order.status}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
-                        {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex gap-2">
-                        {order.status === "pending" && <button onClick={() => handleStatusUpdate(order.id, "ACCEPTED")} className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm font-medium">Accept</button>}
-                        {order.status === "ACCEPTED" && <button onClick={() => handleStatusUpdate(order.id, "READY")} className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">Ready</button>}
-                        {order.status === "READY" && <button onClick={() => handleStatusUpdate(order.id, "COMPLETED")} className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm font-medium">Complete</button>}
-                        {order.status === "CANCELLED" && <span className="text-red-500 text-sm flex items-center gap-1"><XCircle className="w-4 h-4" /> Cancelled</span>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* Orders List */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-700">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Orders</h2>
           </div>
+
+          {loading && orders.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 dark:text-slate-400">Loading orders...</div>
+          ) : orders.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 dark:text-slate-400">No active orders found.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 dark:bg-slate-700/50">
+                  <tr>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Items</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {orders.map((order) => (
+                    <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition">
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300">
+                          {order.id.slice(0, 8)}...
+                        </span>
+                        <div className="text-xs text-slate-400 mt-1">
+                          {new Date(order.created_at).toLocaleTimeString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          {/* Parse JSON if needed, assuming API returns parsed JSON now or we parse it here */}
+                          {(typeof order.items === 'string' ? JSON.parse(order.items) : order.items).map((item: any, i: number) => (
+                            <div key={i} className="text-sm text-slate-700 dark:text-slate-300">
+                              <span className="font-medium text-slate-900 dark:text-white">{item.quantity}x</span> {item.name}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                        ₹{order.total.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                          ${order.status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' : ''}
+                          ${order.status === 'accepted' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' : ''}
+                          ${order.status === 'ready' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : ''}
+                          ${order.status === 'completed' ? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300' : ''}
+                        `}>
+                          {order.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          {order.status === 'pending' && (
+                            <button
+                              onClick={() => updateStatus(order.id, 'accepted')}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition"
+                            >
+                              Accept
+                            </button>
+                          )}
+                          {order.status === 'accepted' && (
+                            <button
+                              onClick={() => updateStatus(order.id, 'ready')}
+                              className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition"
+                            >
+                              Ready
+                            </button>
+                          )}
+                          {order.status === 'ready' && (
+                            <button
+                              onClick={() => updateStatus(order.id, 'completed')}
+                              className="px-3 py-1 bg-slate-600 hover:bg-slate-700 text-white text-xs rounded transition"
+                            >
+                              Complete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
