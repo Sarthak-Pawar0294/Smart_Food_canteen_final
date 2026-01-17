@@ -53,7 +53,16 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 `);
 
-// 2. RUN SEEDING FROM EXTERNAL FILE
+// 2. CLEANUP AND SEED
+// Wipe tables to remove test users/orders and reset ID counters
+console.log("🧹 Cleaning up old/test data...");
+db.exec(`
+  DELETE FROM orders;
+  DELETE FROM users;
+  DELETE FROM sqlite_sequence WHERE name='users';
+`);
+
+// Re-seed only the official users from add-user.js
 seedUsers(db);
 
 // --------------------------------------
@@ -71,16 +80,17 @@ app.post('/api/login', (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const emailRegex = /^[a-z]+\.[0-9]{10}@vit\.edu$/i;
+    // Updated Regex: Accepts any numeric length for PRN (supports 5-digit test IDs and 10-digit real PRNs)
+    const emailRegex = /^[a-z]+\.[0-9]+@vit\.edu$/i;
 
     if (!emailRegex.test(email) && email !== OWNER_EMAIL) {
-      return res.status(400).json({ error: "Invalid email format (Must contain 10-digit PRN)" });
+      return res.status(400).json({ error: "Invalid email format. Format: firstname.PRN@vit.edu" });
     }
 
     const prnFromEmail =
       email === OWNER_EMAIL
         ? "canteen"
-        : email.match(/\.(\d{10})@/)?.[1];
+        : email.match(/\.(\d+)@/)?.[1];
 
     if (!prnFromEmail) {
       return res.status(400).json({ error: "Could not extract PRN from email" });
@@ -122,168 +132,3 @@ app.post('/api/orders', (req, res) => {
     const { userId, items, total, paymentMethod, paymentStatus } = req.body;
 
     if (!userId || !items || !total) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
-
-    const user = db.prepare("SELECT email, full_name FROM users WHERE id = ?").get(userId);
-
-    const now = new Date();
-    const paymentTime = now.toISOString();
-    const createdAt = now.toISOString();
-    const validTillTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-    const orderId = randomUUID();
-
-    const paymentData = {
-      studentName: user?.full_name || "Student",
-      studentEmail: user?.email || ""
-    };
-
-    const stmt = db.prepare(`
-      INSERT INTO orders 
-      (id, user_id, items, total, status, payment_method, payment_status,
-       payment_time, valid_till_time, payment_data, created_at)
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
-      orderId,
-      userId,
-      JSON.stringify(items),
-      total,
-      paymentMethod || "CASH",
-      paymentStatus || "CASH",
-      paymentTime,
-      validTillTime,
-      JSON.stringify(paymentData),
-      createdAt
-    );
-
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
-
-    const receipt = {
-      studentName: paymentData.studentName,
-      studentEmail: paymentData.studentEmail,
-      orderId: order.id,
-      items,
-      totalAmount: total,
-      paymentMethod: paymentMethod || "CASH",
-      paymentStatus: paymentStatus === "PAID" ? "SUCCESS" : "PENDING",
-      paymentTime,
-      validTillTime,
-      orderStatus: order.status
-    };
-
-    return res.json({ success: true, order, receipt });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to create order" });
-  }
-});
-
-// --------------------------------------
-// GET ALL ORDERS (OWNER ONLY)
-// --------------------------------------
-app.get('/api/orders/all', (req, res) => {
-  try {
-    const ownerEmail = req.headers["x-owner-email"];
-    if (ownerEmail !== OWNER_EMAIL) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-    const orders = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all();
-    return res.json({ success: true, orders });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to fetch orders" });
-  }
-});
-
-// --------------------------------------
-// GET USER ORDERS
-// --------------------------------------
-app.get('/api/orders/:userId', (req, res) => {
-  try {
-    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
-    return res.json({ success: true, orders });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to fetch orders" });
-  }
-});
-
-// --------------------------------------
-// UPDATE ORDER STATUS (OWNER ONLY)
-// --------------------------------------
-app.patch('/api/orders/:orderId', (req, res) => {
-  try {
-    const ownerEmail = req.headers["x-owner-email"];
-    if (ownerEmail !== OWNER_EMAIL) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    const { status } = req.body;
-    if (!["ACCEPTED", "READY", "COMPLETED"].includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-
-    db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.orderId);
-    const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.orderId);
-
-    return res.json({ success: true, order: updated });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update order" });
-  }
-});
-
-// --------------------------------------
-// CANCEL ORDER (STUDENT)
-// --------------------------------------
-app.patch('/api/orders/:orderId/cancel', (req, res) => {
-  try {
-    const { orderId } = req.params;
-
-    const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId);
-
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    if (order.status !== 'pending') {
-      return res.status(400).json({ 
-        error: "Cannot cancel order. It has already been processed." 
-      });
-    }
-
-    db.prepare("UPDATE orders SET status = 'CANCELLED' WHERE id = ?").run(orderId);
-
-    return res.json({ success: true, message: "Order cancelled successfully" });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to cancel order" });
-  }
-});
-
-// --------------------------------------
-// HEALTH CHECK
-// --------------------------------------
-app.get('/api/healthz', (req, res) => {
-  return res.json({ status: "ok", message: "API running" });
-});
-
-// --------------------------------------
-// SPA FALLBACK
-// --------------------------------------
-app.get('*', (req, res) => {
-  if (fs.existsSync(distPath)) {
-    res.sendFile(join(__dirname, "dist", "index.html"));
-  } else {
-    res.status(404).send("Frontend not built. Run 'npm run build'");
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`✔ Backend running on port ${PORT}`);
-});
