@@ -3,7 +3,6 @@ import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Navigation from './components/Navigation';
-import OrderNotification from './components/OrderNotification';
 
 // Pages
 import Login from './pages/Login';
@@ -21,9 +20,6 @@ function App() {
               
               {/* Top Navigation Bar */}
               <Navigation />
-              
-              {/* Real-time Status Popup (Background Polling) */}
-              <OrderNotification />
               
               {/* Page Content */}
               <main className="container mx-auto px-4 py-8">
