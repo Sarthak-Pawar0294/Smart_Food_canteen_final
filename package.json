@@ -10,7 +10,6 @@
     "server": "node server.js"
   },
   "dependencies": {
-    "3": "^2.1.0",
     "@supabase/supabase-js": "^2.57.4",
     "better-sqlite3": "^12.6.0",
     "cors": "^2.8.5",
