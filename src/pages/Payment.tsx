@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -25,6 +26,7 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<ReceiptType | null>(null);
+  const navigate = useNavigate();
   
   // Snapshot of items for the receipt
   const [orderItems, setOrderItems] = useState<CartItem[]>([]);
@@ -99,8 +101,12 @@ export default function Payment({ onPaymentComplete, onBack }: PaymentProps) {
   const handleReceiptClose = () => {
     clearCart();
     setReceipt(null);
-    if (onPaymentComplete) onPaymentComplete();
-    // Redirect to menu if needed, or handle in parent
+    if (onPaymentComplete) {
+      onPaymentComplete();
+    } else {
+      // Navigate to order history after successful payment
+      navigate('/orders');
+    }
   };
 
   if (!user) {
